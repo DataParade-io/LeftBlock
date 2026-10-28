@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "event_id": "ed8bbde1-c1cc-4e22-b616-4b616d2fea1e",
+  "issue_id": "kanbus-eb550dfb-1207-4829-a46a-6fccf5bd5479",
+  "event_type": "issue_created",
+  "occurred_at": "2026-10-28T17:34:15.344Z",
+  "actor_id": "home",
+  "payload": {
+    "title": "Evaluate and integrate OpenAI Privacy Filter as an optional model-based checker",
+    "description": "OpenAI Privacy Filter (openai/privacy-filter, Apache 2.0, 1.5B params / 50M active, runs locally on CPU, opf CLI with JSON output) labels person, address, email, phone, URL, date, account number and secret spans. It would let LeftBlock catch names, addresses and phone numbers in prose, which gitleaks patterns cannot. Proposed integration: optional extra leftblock[privacy-filter] plus a 'leftblock privacy-scan' command checker that scans only added lines and writes a gitleaks-format report, so ids, overrides, hints, JSON and merge scoping work unchanged; start in a new warn-only checker mode; configurable labels and score threshold; board data and a per-repo public-names list excluded. Step 1 (approved by Ryan 2026-10-28): measure true and false findings per label, threshold, memory and latency on recent commits from five repos, locally, deleting the model afterwards. Decide hook vs full-scan (e10e0f) vs CI (300531) placement from the numbers. Specs: a new Gherkin chapter.",
+    "issue_type": "story",
+    "status": "open",
+    "priority": 2,
+    "assignee": null,
+    "parent": null,
+    "labels": []
+  }
+}
