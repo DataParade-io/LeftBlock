@@ -73,6 +73,36 @@ The model is never downloaded in specs: `LEFTBLOCK_DEEP_DETECTOR` names
   `the output has no ANSI escape codes`,
   `the staged allow file records rule "{rule}" for "{name}"`
 
+## Measuring detection steps (`ch18_measuring_steps.py`, chapter 18)
+
+A CredData-shaped fixture is built at run time (`eval-data/CredData/{meta,data}`
+in the scenario's world); `python -m eval run` is run as a subprocess with the
+stub detector, and `context.results` holds the parsed results JSON.
+
+- `a fixture dataset`
+- `the fixture labels these lines:` (table `truth | category | shape`; shapes:
+  `ruleset key`, `model-only secret`, `pem block`, `quiet value`, `uuid`)
+- `the fixture also holds an unlabelled file with a ruleset key`
+- `the model flags the fixture's model-only secrets as secret at {score}`
+- `I evaluate the fixture with detectors "{names}"` (and
+  `... and a deep sample of {n}`), `I evaluate the generated corpus with detectors "{names}"`,
+  `I evaluate with the data directory inside that repository`
+- `the evaluation succeeds`
+- `in the {full files|deep sample} "{detector}" scores {tp} true positives, {fp} false positives and {fn} misses`
+  and `... has recall {r} and precision {p}` (detectors: `stock gitleaks`,
+  `LeftBlock ruleset`, `deep scan`, `combined`)
+- `in the {scope} the critical tier holds {n} true lines and "{detector}" misses {m} of them`
+- `{n} labelled lines are excluded as X`,
+  `{n} findings on unlabelled lines are reported for "{detector}" apart from the scores`
+- `the deep scan adds {tp} true positives and {fp} false positives over the LeftBlock ruleset`,
+  `the deep sample holds {n} critical true lines`,
+  `the deep sample estimates {n} false lines from {m} sampled`
+- `every reported rate has a 95% interval around it`,
+  `the report reveals no fixture value or file path`,
+  `the report states the critical tier and the excluded count`,
+  `the generated corpus had more than {n} labelled lines`,
+  `the generated corpus left no files behind`, `the report reveals no generated value`
+
 ## Synthetic kinds
 
 Used as `a synthetic <kind>`. The content shown is what ends up in the file.
