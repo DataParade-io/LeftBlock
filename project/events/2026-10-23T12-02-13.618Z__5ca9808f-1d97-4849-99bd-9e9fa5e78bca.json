@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "event_id": "5ca9808f-1d97-4849-99bd-9e9fa5e78bca",
+  "issue_id": "kanbus-e10e0fd5-3d36-4268-b233-33c5c94ca877",
+  "event_type": "issue_created",
+  "occurred_at": "2026-10-23T12:02:13.618Z",
+  "actor_id": "home",
+  "payload": {
+    "title": "Full-repository scan as an explicit option, not part of the git hooks",
+    "description": "LeftBlock checks only staged changes in its git hooks. That catches new leaks, but not ones already sitting in a repo. Found 2026-10-23: an author email in Markus's pyproject.toml had been in the repo all along; LeftBlock passed the commit that removed it, because it never saw the line in a diff.\n\n## Want\nAn explicit, opt-in way to scan whole files: the entire working tree, or chosen paths. It must NOT be built into the git hooks. The hooks stay diff-only and fast. A full scan runs only when asked, for example `leftblock scan --all` or `leftblock scan PATH…`, and suits a one-off audit or a CI job a repo opts into.\n\n## Scope (to decide when picked up)\n- The CLI shape: a flag, or a subcommand.\n- The same rule set and allow-list (.leftblock-allow.yml) as the hooks, including the role-address allowance.\n- Respect .gitignore and ignore_paths; skip binaries and lockfiles by default.\n- Output: findings with file:line, a non-zero exit when anything is found, and a machine-readable JSON format.\n- Optional: a baseline file, so existing accepted findings don't block, if needed.\n\n## Acceptance\n- Gherkin specs (narrative, complete): a full scan finds a pre-existing email that a diff scan misses; the hooks still scan diffs only; allow-listed entries are skipped; the exit codes.\n- README documents when to use each.\n\nFiled only. Not started; no work scheduled.",
+    "issue_type": "story",
+    "status": "open",
+    "priority": 2,
+    "assignee": null,
+    "parent": null,
+    "labels": []
+  }
+}

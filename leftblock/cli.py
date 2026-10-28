@@ -15,6 +15,7 @@ from leftblock.merge import (
 )
 from leftblock import allow as allowlist
 from leftblock import bypass
+from leftblock import deep
 from leftblock.core import (
     get_secret, compute_hmac, get_tree_hash, get_commit_tree_hash,
     load_config, validate_checkers, execute_checkers, get_trailer, run_cmd, SECRET_FILE_DEFAULT,
@@ -482,6 +483,8 @@ def cmd_allow(args):
     if len(reason) < allowlist.MIN_REASON:
         print_err(f"--reason must explain the override (at least {allowlist.MIN_REASON} characters).")
         sys.exit(1)
+    if args.deep:
+        return cmd_allow_deep(args, reason)
     repo_root = run_cmd(["git", "rev-parse", "--show-toplevel"]).stdout.strip()
     config_path = args.config or default_local_policy(repo_root)
     tree_hash = get_tree_hash()
@@ -537,10 +540,10 @@ def json_report(result, findings, applied, errors, command):
     return {
         "version": leftblock_version(),
         "result": result,
-        "findings": [{
+        "findings": [dict({
             "file": f.get("File"), "line": f.get("line"), "rule": f.get("RuleID"),
             "id": f.get("id"), "description": f.get("description"),
-        } for f in findings],
+        }, **({"score": round(f["score"], 2)} if "score" in f else {})) for f in findings],
         "overrides_applied": [
             {"file": f["File"], "rule": f["RuleID"], "id": f["id"], "reason": reason}
             for f, reason in applied
@@ -608,6 +611,130 @@ def cmd_check(args):
         )
     print_info("All configured checks passed for staged changes.")
     finish(EXIT_PASSED, "passed", (), applied)
+
+
+# --- Deep scan (optional, model-based) ---------------------------------------------
+
+def add_deep_options(parser):
+    parser.add_argument(
+        "--labels", default="",
+        help="Also report these comma-separated labels (off by default: "
+             + ", ".join(deep.OPTIONAL_LABELS) + ")",
+    )
+    parser.add_argument(
+        "--threshold", default=str(deep.DEFAULT_THRESHOLD),
+        help="Minimum model score to report (default %(default)s)",
+    )
+
+
+def deep_options_flags(args):
+    flags = ""
+    if args.labels:
+        flags += " --labels " + shlex.quote(args.labels)
+    if args.threshold != str(deep.DEFAULT_THRESHOLD):
+        flags += " --threshold " + shlex.quote(args.threshold)
+    return flags
+
+
+def deep_findings(args, revisions=None):
+    """Deep-scan findings, or raise deep.DeepScanError. Prints the download notice."""
+    labels = deep.parse_labels(args.labels)
+    threshold = deep.parse_threshold(args.threshold)
+    detector = deep.load_detector(print_info)
+    top = run_cmd(["git", "rev-parse", "--show-toplevel"], check=False)
+    if top.returncode:
+        raise deep.DeepScanError("Not inside a Git repository.")
+    repo_root = top.stdout.strip()
+    additions = (
+        deep.range_additions(repo_root, revisions) if revisions else deep.staged_additions(repo_root)
+    )
+    return repo_root, deep.scan(additions, detector, labels, threshold, KANBUS_DATA)
+
+
+def deep_error_message(exc):
+    if isinstance(exc, deep.ExtraMissing):
+        return f"Deep scan needs the optional model extra: {deep.INSTALL_HINT}"
+    return str(exc)
+
+
+def cmd_deep_scan(args):
+    """Opt-in model scan of staged additions (or of a commit range, for CI).
+
+    Never run by the commit hook. Exit status as for check: 0 passed, 1
+    findings, 2 the scan could not complete. Prints location, label, score and
+    id only, never the matched value.
+    """
+    as_json = args.format == "json"
+
+    def finish(code, result, findings=(), applied=(), errors=(), command=None):
+        if as_json:
+            print(json.dumps(json_report(result, findings, applied, errors, command), indent=2))
+        if code:
+            sys.exit(code)
+
+    try:
+        repo_root, findings = deep_findings(args, args.range)
+        entries = allowlist.load_allowlist(repo_root)
+    except allowlist.AllowError:
+        message = f"Invalid {allowlist.ALLOW_FILE}; deep scan blocked."
+        print_err(message)
+        finish(EXIT_ERROR, "error", errors=[("leftblock-allow", message)])
+    except (ValueError, deep.DeepScanError) as exc:
+        message = deep_error_message(exc)
+        print_err(message)
+        finish(EXIT_ERROR, "error", errors=[("deep-scan", message)])
+    result = CheckerResult("privacy-filter", not findings, findings or None)
+    applied = allowlist.apply_allowlist([result], entries)
+    findings = result.findings or []
+    print_applied(applied)
+    if findings:
+        print_info(f"leftblock {leftblock_version()}, deep scan with {deep.MODEL}")
+        print_warn("Deep scan found possible sensitive data (model output; review each).")
+        for f in findings:
+            print(f"      {location(f)}: {_plain(f['RuleID'])} [id {f['id']}] (score {f['score']:.2f})", file=sys.stderr)
+        command = (
+            "leftblock allow --deep" + deep_options_flags(args) + " "
+            + " ".join(f["id"] for f in findings) + ' --reason "<why this is not sensitive>"'
+        )
+        if args.range:
+            print_info("Fix the content, or record the override on a staged change: " + command)
+        else:
+            print_info("Fix the content, or record a reviewed override: " + command)
+        finish(EXIT_BLOCKED, "blocked", findings, applied, command=command)
+    print_info("Deep scan passed for " + ("commits in " + args.range if args.range else "staged changes") + ".")
+    finish(EXIT_PASSED, "passed", (), applied)
+
+
+def cmd_allow_deep(args, reason):
+    """leftblock allow --deep: record overrides for current deep-scan findings."""
+    tree_hash = get_tree_hash()
+    try:
+        repo_root, findings = deep_findings(args)
+    except (ValueError, deep.DeepScanError) as exc:
+        print_err(deep_error_message(exc))
+        sys.exit(EXIT_ERROR)
+    if get_tree_hash() != tree_hash:
+        print_err("Staged tree changed during inspection. Run it again.")
+        sys.exit(1)
+    current = {f["id"]: f for f in findings}
+    unknown = [i for i in args.ids if i not in current]
+    if unknown:
+        print_err("Not a current deep-scan finding id: " + ", ".join(json.dumps(i) for i in unknown))
+        sys.exit(1)
+    chosen = [current[i] for i in dict.fromkeys(args.ids)]
+    for finding in chosen:
+        finding["kind"] = describe(finding)
+    try:
+        added = allowlist.record_overrides(repo_root, chosen, reason)
+    except (OSError, allowlist.AllowError):
+        print_err(f"Existing {allowlist.ALLOW_FILE} is unreadable or invalid; fix it first.")
+        sys.exit(1)
+    run_cmd(["git", "add", "--", allowlist.ALLOW_FILE], cwd=repo_root)
+    for finding in added:
+        print_info(f"Recorded override {finding['id']} for {finding['RuleID']} in {finding['File']}.")
+    if not added:
+        print_info("Those ids were already recorded.")
+    print_info(f"{allowlist.ALLOW_FILE} is staged; the commit must include it.")
 
 
 def cmd_hook(args):
@@ -866,6 +993,15 @@ def main():
     allow_p.add_argument("ids", nargs="+", metavar="ID", help="Finding id(s) shown by the blocked check")
     allow_p.add_argument("--reason", default=None, help="Why the finding is not sensitive")
     allow_p.add_argument("--config", help="Checker policy; defaults to the local install policy, else .leftblock.yml")
+    allow_p.add_argument("--deep", action="store_true", help="IDs are deep-scan findings (takes --labels and --threshold)")
+    add_deep_options(allow_p)
+
+    deep_p = subparsers.add_parser(
+        "deep-scan", help="Optional model-based scan of staged additions or a commit range (needs leftblock[deep])",
+    )
+    deep_p.add_argument("--range", metavar="A..B", help="Scan the added lines of the commits in this range (for CI) instead of the staged diff")
+    deep_p.add_argument("--format", choices=["text", "json"], default="text", help="With json, also print one JSON result object on stdout")
+    add_deep_options(deep_p)
 
     hook_p = subparsers.add_parser("hook", help="Run checkers (used internally by git hook)")
     hook_p.add_argument("commit_msg_file", help="Path to the commit message file")
@@ -884,6 +1020,8 @@ def main():
         cmd_check(args)
     elif args.command == "allow":
         cmd_allow(args)
+    elif args.command == "deep-scan":
+        cmd_deep_scan(args)
     elif args.command == "hook":
         cmd_hook(args)
     elif args.command == "verify":

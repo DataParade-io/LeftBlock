@@ -3,26 +3,34 @@
   "title": "LeftBlock: staged commit protection and dogfood validation",
   "description": "Local Gitleaks hardening and synthetic acceptance are complete. Source checkpoint e3934c90bedec7fbaa137f62c6e0503ba708ed9b passed the source hook scan and receipt verification. Actual installation is now verified in 137 distinct eligible repositories with empty hook locations; every installation preserved project state and passed clean-commit acceptance plus sensitive-fixture rejection without changing the temporary test HEAD on rejection. Tests used synthetic content; no real findings are published. Three managed-hook repositories need 17 checkout-specific adapters and coordinated project workflow before integration can proceed. Canonical public package release remains pending under the release task. This evidence supports the tested local runtime and completed installation scope, not perfect detection or completion of every project.",
   "type": "epic",
-  "status": "in_progress",
+  "status": "closed",
   "priority": 2,
   "assignee": "Codex",
   "creator": null,
   "parent": "kanbus-f66623f4-4914-4425-a8b8-d9a15e9a9979",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "226a8e65-1e2a-48b9-9ca1-13f8c6ec675c",
+      "author": "home",
+      "text": "Done: staged-commit protection is live everywhere and specified end to end in features/ (16 chapters, 435 scenarios, CI fails on any skip).",
+      "created_at": "2026-10-23T13:25:07.384605Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-03T15:57:42.449632Z",
-  "updated_at": "2026-10-20T13:12:49.902740Z",
-  "closed_at": null,
-  "right_now_summary": null,
-  "right_now_updated_at": null,
-  "custom": {
-    "source": "shared",
-    "project_label": "kanbus"
-  },
+  "updated_at": "2026-10-23T13:25:07.440889Z",
+  "closed_at": "2026-10-23T13:25:07.440843Z",
   "agent": {
     "platform": "cursor",
     "model": "GLM 5.3 Flash",
     "name": "Cloud Agent on BlackbookM1"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {
+    "project_label": "kanbus",
+    "source": "shared"
   }
 }

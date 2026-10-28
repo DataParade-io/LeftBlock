@@ -14,6 +14,13 @@ dependencies = [
     "behave",
 ]
 
+[project.optional-dependencies]
+# Opt-in model-based `leftblock deep-scan` (downloads about 2.8 GB of weights on first use).
+deep = [
+    "transformers",
+    "torch",
+]
+
 [tool.setuptools]
 packages = ["leftblock"]
 

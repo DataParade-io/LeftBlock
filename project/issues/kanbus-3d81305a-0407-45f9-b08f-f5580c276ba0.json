@@ -3,26 +3,34 @@
   "title": "Make LeftBlock the canonical package and CLI with Pudicus compatibility",
   "description": "The canonical product, distribution and command are LeftBlock. Source migration is checkpointed locally at e3934c90bedec7fbaa137f62c6e0503ba708ed9b with legacy Pudicus compatibility preserved, and source hook scanning and receipt verification passed. The local runtime has been installed and verified across 137 eligible repositories, preserving project state and passing synthetic clean/sensitive tests. Preserve the existing pudicus project/releases and compatibility requirements for commands/imports, configuration, hook runtime and receipts. Final canonical release-artifact and published-install verification remain tracked with publication; PyPI upload has not occurred. Do not infer a public release or completed managed-hook integrations from the local source checkpoint.",
   "type": "task",
-  "status": "in_progress",
+  "status": "closed",
   "priority": 2,
   "assignee": "Codex",
   "creator": null,
   "parent": "kanbus-9b3848e4-e473-49bc-a8ac-1e22b1214cdd",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "d7609be2-5512-47b4-b29b-33c4bbffc688",
+      "author": "home",
+      "text": "Done: leftblock is the only package and CLI; historical pudicus-v1 receipts still verify (spec: features/13_receipt_mode.feature 'Receipts keep verifying under the validator name they were signed with').",
+      "created_at": "2026-10-23T13:25:07.280355Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-20T12:17:37.832572Z",
-  "updated_at": "2026-10-20T13:13:09.533776Z",
-  "closed_at": null,
-  "right_now_summary": null,
-  "right_now_updated_at": null,
-  "custom": {
-    "source": "shared",
-    "project_label": "kanbus"
-  },
+  "updated_at": "2026-10-23T13:25:07.329268Z",
+  "closed_at": "2026-10-23T13:25:07.329220Z",
   "agent": {
     "platform": "codex",
     "model": "unspecified",
     "name": "Codex"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {
+    "project_label": "kanbus",
+    "source": "shared"
   }
 }

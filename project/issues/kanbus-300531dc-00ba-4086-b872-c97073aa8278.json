@@ -10,9 +10,17 @@
   "parent": "kanbus-00328ba2-5ba8-4280-b784-d3f2e9426ef1",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "f9f7d22c-4717-4cc1-94e8-8f5deaccc133",
+      "author": "home",
+      "text": "Status 2026-10-23: not started. Next step: design a reusable GitHub Action or workflow snippet running the shipped ruleset over a PR's commits with the staged allow file.",
+      "created_at": "2026-10-23T13:25:07.628653Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-21T01:45:35.859228Z",
-  "updated_at": "2026-10-21T01:45:35.859272Z",
+  "updated_at": "2026-10-23T13:25:07.628686Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,

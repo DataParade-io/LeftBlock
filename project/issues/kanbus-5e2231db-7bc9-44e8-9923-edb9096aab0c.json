@@ -3,7 +3,7 @@
   "title": "Publish LeftBlock 0.3.0 while preserving existing Pudicus releases",
   "description": "The new LeftBlock PyPI publication is explicitly authorized but has not occurred. Canonical source is checkpointed locally at e3934c90bedec7fbaa137f62c6e0503ba708ed9b; source hook scanning and receipt verification passed, and the local runtime has been installed and tested in 137 eligible repositories. Existing pudicus 0.2.0 and its project/releases remain preserved. A new trusted-publisher grant still requires exact approval and authenticated PyPI management access. The proposed grant and blocked prerequisite are tracked in the linked authorization task. Complete and verify the release artifact and clean published-package installation only after that prerequisite is met. Local source/installation evidence is not evidence of a published package. Source and README changes are now pushed for review at https://github.com/DataParade-io/LeftBlock/pull/5 (draft). The reviewed feature-branch head is 4ec816d956c98cfe4a2409ca17c6d718b012e55c. Main-branch integration remains pending; no main merge or PyPI publication has occurred.",
   "type": "task",
-  "status": "in_progress",
+  "status": "closed",
   "priority": 2,
   "assignee": "Codex",
   "creator": null,
@@ -19,19 +19,27 @@
       "type": "blocked-by"
     }
   ],
-  "comments": [],
+  "comments": [
+    {
+      "id": "c829f854-1b9c-44cf-b702-59d6a2d66a33",
+      "author": "home",
+      "text": "Done: LeftBlock is published on PyPI and released by python-semantic-release on every push to main (0.5.1 current, 2026-10-22). Pudicus releases on PyPI untouched.",
+      "created_at": "2026-10-23T13:25:06.934909Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-20T12:17:35.819253Z",
-  "updated_at": "2026-10-20T13:15:14.158060Z",
-  "closed_at": null,
-  "right_now_summary": null,
-  "right_now_updated_at": null,
-  "custom": {
-    "source": "shared",
-    "project_label": "kanbus"
-  },
+  "updated_at": "2026-10-23T13:25:06.995638Z",
+  "closed_at": "2026-10-23T13:25:06.995553Z",
   "agent": {
     "platform": "codex",
     "model": "unspecified",
     "name": "Codex"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {
+    "project_label": "kanbus",
+    "source": "shared"
   }
 }

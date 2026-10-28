@@ -24,10 +24,17 @@
       "text": "Prospectus asks for a documented repo-level allowance for an org's own public role addresses (info@, privacy@, support@ at its domains) without per-finding overrides. Fold into the repo-level allow patterns item.",
       "created_at": "2026-10-21T01:45:35.876842Z",
       "comment_type": "default"
+    },
+    {
+      "id": "cabecd87-9c0e-447d-994d-697ec6b32386",
+      "author": "home",
+      "text": "Status 2026-10-23: shipped in 0.4.0 (marker and .gitleaksignore findings, --ignore-gitleaks-allow, root ignore warning, allowed:N receipts). Remaining: repo-level allow patterns incl. org role addresses. The baseline/history scan part is now its own story, e10e0f (filed, not started: Ryan asked for no work yet).",
+      "created_at": "2026-10-23T13:25:07.582904Z",
+      "comment_type": "default"
     }
   ],
   "created_at": "2026-10-20T23:43:17.230084Z",
-  "updated_at": "2026-10-21T01:45:35.876873Z",
+  "updated_at": "2026-10-23T13:25:07.582945Z",
   "closed_at": null,
   "right_now_summary": null,
   "right_now_updated_at": null,

@@ -3,26 +3,34 @@
   "title": "Authorize and configure LeftBlock PyPI trusted publishing",
   "description": "The new LeftBlock PyPI publication is explicitly authorized, but no new publisher grant or credentials may be created without exact approval. Proposed trusted publisher: PyPI project leftblock; repository owner DataParade-io; repository LeftBlock; workflow release.yml; environment left blank. No authenticated PyPI management session is available, so the grant remains pending. Obtain the exact approved management action through the proper account, then verify the publisher before running the release. Keep existing pudicus releases and access intact, use no secret values in tracker records, and never widen credential or team permissions to work around this prerequisite.",
   "type": "sub-task",
-  "status": "blocked",
+  "status": "closed",
   "priority": 2,
   "assignee": "Codex",
   "creator": null,
   "parent": "kanbus-5e2231db-7bc9-44e8-9923-edb9096aab0c",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "4e591645-488b-4e14-9225-e0e747f0876c",
+      "author": "home",
+      "text": "Done: PyPI trusted publishing works from release.yml (0.4.0, 0.4.2, 0.4.3, 0.5.0, 0.5.1 all published via OIDC). A rerun can now republish a tagged release whose upload failed.",
+      "created_at": "2026-10-23T13:25:07.041282Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-20T12:48:55.552473Z",
-  "updated_at": "2026-10-20T12:49:00.889240Z",
-  "closed_at": null,
-  "right_now_summary": null,
-  "right_now_updated_at": null,
-  "custom": {
-    "source": "shared",
-    "project_label": "kanbus"
-  },
+  "updated_at": "2026-10-23T13:25:07.091241Z",
+  "closed_at": "2026-10-23T13:25:07.091190Z",
   "agent": {
     "platform": "codex",
     "model": "unspecified",
     "name": "Codex"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {
+    "project_label": "kanbus",
+    "source": "shared"
   }
 }

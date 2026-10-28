@@ -55,3 +55,8 @@ authors are in [steps/README.md](steps/README.md).
     command as a checker with its own success and finding codes.
 16. **The command line** (`16_the_command_line`). Subcommands, `--help`,
     `--version` and argument errors: the surface a person types.
+17. **Deep scan** (`17_deep_scan`). The optional, model-based
+    `leftblock deep-scan` (never run by the hook): default labels and
+    threshold, enabling off labels, the exclusions, recorded overrides,
+    `--range` for CI, exit codes, and never printing the matched value. The
+    specs swap the model for a stub detector.

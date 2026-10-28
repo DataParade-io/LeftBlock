@@ -3,26 +3,34 @@
   "title": "Install and verify LeftBlock across active projects",
   "description": "Actual local installation and validation are complete for all 137 eligible Git repositories with empty hook locations, covering 260 present checkouts: one pilot, 115 in the initial batch, one refreshed coordinated installation, and 20 coordinated installations. All 137 distinct repositories preserved project state, accepted clean synthetic commits and blocked sensitive fixtures without changing the temporary test HEAD on rejection. An initial state-drift skip was safely replanned and subsequently passed. Three repositories using hook managers need 17 checkout-specific adapters that preserve configured hook paths and existing hooks; the current installer cannot safely compose them unchanged. Required project issue/branch workflows, unavailable project-tracker tooling and active-owner coordination remain prerequisites. No manager hook changes were attempted or denied. Forty-four generated/vendor/upstream repositories were excluded and eleven dangling Git pointers remain unresolved. These aggregates describe completed versus pending scope; private inventory and policy remain local. Public package release is separately pending and does not invalidate the verified local installations.",
   "type": "task",
-  "status": "in_progress",
+  "status": "closed",
   "priority": 2,
   "assignee": "Codex",
   "creator": null,
   "parent": "kanbus-339b17b7-f9ff-4f5b-aafd-1978ee73eba8",
   "labels": [],
   "dependencies": [],
-  "comments": [],
+  "comments": [
+    {
+      "id": "3ebd57eb-ca1f-4edb-81a1-972c7997f27b",
+      "author": "home",
+      "text": "Done: every managed pre-commit hook under ~/Projects (about 76 repos incl. nested DataParade-io/, AnthusMicronics/, m6-work/ checkouts) runs 0.5.1 through the stable link ~/.local/share/leftblock/current. Upgrade procedure documented in the README (Upgrades and the stable runtime link).",
+      "created_at": "2026-10-23T13:25:07.164658Z",
+      "comment_type": "default"
+    }
+  ],
   "created_at": "2026-10-20T12:17:36.322169Z",
-  "updated_at": "2026-10-20T13:14:30.921515Z",
-  "closed_at": null,
-  "right_now_summary": null,
-  "right_now_updated_at": null,
-  "custom": {
-    "source": "shared",
-    "project_label": "kanbus"
-  },
+  "updated_at": "2026-10-23T13:25:07.231128Z",
+  "closed_at": "2026-10-23T13:25:07.231082Z",
   "agent": {
     "platform": "codex",
     "model": "unspecified",
     "name": "Codex"
+  },
+  "right_now_summary": null,
+  "right_now_updated_at": null,
+  "custom": {
+    "project_label": "kanbus",
+    "source": "shared"
   }
 }
