@@ -349,6 +349,73 @@ the receipts required by this gate.
 
 ---
 
+## Deep scan (optional)
+
+Pattern rules cannot see everything. `leftblock deep-scan` adds a second,
+model-based opinion using OpenAI's [Privacy Filter](https://huggingface.co/openai/privacy-filter)
+(Apache-2.0), a token-classification model run through the Hugging Face
+`transformers` pipeline on CPU. It is opt-in and **never part of the commit
+hook**, which stays on gitleaks only.
+
+Install the extra and run it:
+
+```bash
+pip install 'leftblock[deep]'           # transformers + torch
+leftblock deep-scan                      # added lines of the staged diff
+leftblock deep-scan --range A..B         # added lines of the commits in A..B (CI)
+leftblock deep-scan --format json        # also print a JSON result, like check
+```
+
+Without the extra it prints one line saying to install `leftblock[deep]` and
+exits 2. Exit codes are those of `check`: 0 passed, 1 findings, 2 error. Each
+finding is printed as `file:LINE: privacy-filter-<label> [id …] (score 0.97)`;
+the matched value is never printed, in text or in JSON.
+
+By default it reports spans scored at least 0.9 for `secret`, `private_email`,
+`private_phone` and `private_address`. `private_person`, `account_number`,
+`private_date` and `private_url` are off by default (too noisy in the five
+repositories the defaults were tuned on); add them with
+`--labels private_person,private_url` and change the cut-off with
+`--threshold 0.8`.
+
+To keep the noise usable it skips Kanbus board data (`project/issues`,
+`project/events`, `project/.cache`), generated, minified, vendored and lock
+files, lines mentioning `placeholder`, `example`, `fake`, `synthetic` or
+`dummy`, `secret` spans shaped like a UUID, hex hash, hex colour, ISO date or
+prefixed issue id, and `private_email` addresses the shipped ruleset already
+allows (reserved example domains, `noreply`) plus `.internal`.
+
+A false alarm is cleared like any other, with a recorded override under the
+rule name `privacy-filter-<label>`:
+
+```bash
+leftblock allow --deep ID --reason "Why this is not sensitive"
+```
+
+(`allow --deep` takes the same `--labels` and `--threshold` as the scan that
+printed the id.) In `--range` mode the committed `.leftblock-allow.yml` is
+honoured the same way. Range mode reads each non-merge commit's own additions,
+so a secret added and removed inside the range is still reported; the line
+number is the one in that commit.
+
+A CI job (GitHub Actions) that scans a pull request:
+
+```yaml
+- uses: actions/checkout@v4
+  with: {fetch-depth: 0}
+- uses: actions/setup-python@v5
+  with: {python-version: '3.11'}
+- uses: actions/cache@v4
+  with: {path: ~/.cache/huggingface, key: privacy-filter-model}
+- run: pip install 'leftblock[deep]'
+- run: leftblock deep-scan --range origin/${{ github.base_ref }}..HEAD
+```
+
+Cost, honestly: the first run downloads about 2.8 GB of weights to the normal
+Hugging Face cache (it says so on stderr first), the model needs several GB of
+RAM, and a scan takes seconds per commit rather than milliseconds. That is why
+it is a separate command and not a hook.
+
 ## Out-of-the-Box Detection
 
 LeftBlock ships a Gitleaks ruleset (copied to `.leftblock/gitleaks.toml` in receipt mode) that

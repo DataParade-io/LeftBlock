@@ -3,8 +3,8 @@ Feature: The command line
   I want a small, predictable command surface with real help
   So that I can discover what exists, trust what a command will do, and install or remove LeftBlock without side effects
 
-  LeftBlock has six public commands: install, check, allow, hook, verify and
-  approve. Each answers --help, the installed "leftblock" command is the
+  LeftBlock has seven public commands: install, check, allow, deep-scan, hook,
+  verify and approve. Each answers --help, the installed "leftblock" command is the
   same program as "python -m leftblock.cli", "--version" names the release,
   and mistakes in the command line exit with status 2 and a usage message.
   Running "check" with the default policy never creates signing credentials.
@@ -22,6 +22,7 @@ Feature: The command line
     And stdout contains "install"
     And stdout contains "check"
     And stdout contains "allow"
+    And stdout contains "deep-scan"
     And stdout contains "hook"
     And stdout contains "verify"
     And stdout contains "approve"
@@ -37,6 +38,7 @@ Feature: The command line
       | install |
       | check   |
       | allow   |
+      | deep-scan |
       | hook    |
       | verify  |
       | approve |
@@ -55,6 +57,7 @@ Feature: The command line
       | install |
       | check   |
       | allow   |
+      | deep-scan |
       | hook    |
       | verify  |
       | approve |
