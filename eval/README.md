@@ -67,7 +67,7 @@ formats are outside both. Change the mapping in one place if you disagree.
 
 ## The deep scan is sampled
 
-The model runs at about 1.1 s per KB of text on CPU, so it cannot read CredData's
+The model runs at about 1 to 2.5 s per KB of text on CPU (1.1 on an idle M1 Max, 2.0 while the machine was busy), so it cannot read CredData's
 19 million lines. It reads **±5 lines around labelled lines**, merged per file:
 
 * all critical-tier true lines (a census);
@@ -77,8 +77,11 @@ The model runs at about 1.1 s per KB of text on CPU, so it cannot read CredData'
   the full dataset and the intervals use the Kish effective sample size.
 
 Gitleaks (a) and (b) are run on the same windows (other lines blanked, numbering kept),
-so (b), (c) and (d) compare like with like. The default finishes in roughly 1.5 hours
-on an Apple-silicon laptop; the run prints its estimate first. The model may have seen
+so (b), (c) and (d) compare like with like. The default sample is about 4.9 MB of text, 3.3 MB
+of it the census: roughly 1.5 to 2.7 hours in one process. The model uses only about two cores,
+so run three shards in parallel (`--deep-shard 0/3`, `1/3`, `2/3`, each with the same other
+arguments; they only fill the cache), which was about twice as fast, then run once without
+`--deep-shard` to score. The run prints its estimate first. The model may have seen
 CredData in training (OpenAI's model card reports a CredData split), so read (c) and (d)
 on CredData with that in mind; the generated corpus is the cleaner test.
 
@@ -102,6 +105,12 @@ start with under 30 GB free. Time: gitleaks over CredData takes about 3 minutes,
 deep scan about 1.5 hours (progress is checkpointed per file in `<data-dir>/work`, so an
 interrupted run resumes). Clean up afterwards: delete the data directory, the venv and
 `~/.cache/huggingface/hub/models--openai--privacy-filter`.
+
+The committed 0.6.0 run: gitleaks over all of CredData about 3.5 minutes (twice, full files
+and windows), the generated corpus 8 minutes in one process, the CredData deep scan about
+80 minutes of wall time across three to four parallel processes (an hour of the model per
+process on a busy M1 Max). Several files in the sample match the deep scan's own skip rules
+(minified, lock and generated files), so the model reads less than the 4.9 MB planned.
 
 Results land in `eval/results/<leftblock-version>.json` and `.md`: counts, rates and
 category names only. No value, no file content and no dataset file path is written.

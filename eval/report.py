@@ -154,13 +154,13 @@ def render(results):
             s = w["sample"]
             out.append("### Deep-scan sample: all four detectors on the same context windows\n")
             out.append(
-                "The model runs at about %.1f s per KB on CPU, so it reads ±%d-line windows around a sample of labelled lines: "
+                "The model runs at roughly 1 to 2.5 s per KB of text on CPU, so it reads ±%d-line windows around a sample of labelled lines: "
                 "all %d critical-tier true lines (a census, weight 1) plus a stratified random sample of the rest "
                 "(`--deep-sample %d`, at least %d per stratum; %d other lines), %d lines in all, in %d files, %.0f KB of text. "
                 "Sampled lines carry the weight N/n of their stratum, so rates estimate the full-dataset values; "
                 "intervals use the Kish effective sample size, so the sampling error is in them. "
                 "The TP/FP/FN columns are population estimates. Gitleaks (a) and (b) ran on the same windows, so (b), (c) and (d) compare like with like.\n"
-                % (w["seconds"].get(detectors.DEEP, 0) / max(s["model_kb"], 1), s["context_lines_radius"], s["critical_true_census"], cd["deep_sample_requested"], s["min_per_stratum"],
+                % (s["context_lines_radius"], s["critical_true_census"], cd["deep_sample_requested"], s["min_per_stratum"],
                    s["other_sampled"], s["units"], s["files"], s["model_kb"]))
             out.append(headline(w, weighted=True) + "\n")
             out.append("**Recall by critical group** (sample; critical true lines are a census):\n")
@@ -184,7 +184,6 @@ def render(results):
                         out.append("Extra false positives by category (c over b, sampled count): %s\n" % (
                             ", ".join("%s %d" % (c, v["count"]) for c, v in sorted(a["new_false_positives"]["by_category"].items(),
                                                                                   key=lambda kv: -kv[1]["count"])[:12]) or "none"))
-            out.append("Seconds per detector on the sample: %s.\n" % ", ".join("%s %.0f s" % (NAMES[k], v) for k, v in w["seconds"].items() if k in NAMES))
         out.append("### Flags on lines CredData did not label\n")
         out.append("Gitleaks scanned the whole files, so it also flagged lines the dataset has no label for. These are **not** counted as false positives: "
                    "CredData labels only candidate lines, so an unlabelled line is unreviewed rather than known-clean, and some flags may be real credentials the "
@@ -269,7 +268,9 @@ def render(results):
     rows = []
     for name, d in datasets.items():
         rows.append([name, "%.0f s" % d["seconds_total"]])
-    out.append(table(["Dataset", "Wall time"], rows) + "\n")
+    out.append("Wall time of the scoring run that wrote this file. The deep scan's per-file results are cached, so a run that reads the cache "
+               "(or a sharded run, see the README) does not show the model's time; the scan itself needs one to three hours of CPU.\n")
+    out.append(table(["Dataset", "Wall time (scoring run)"], rows) + "\n")
     out.append("## Caveats\n")
     out.append(
         "- **The model may have seen CredData in training.** OpenAI's Privacy Filter model card reports a CredData split, so (c) and (d) on CredData may be optimistic; "

@@ -74,12 +74,21 @@ def cmd_run(args):
     json_path, _ = results_paths(args.results_dir, version)
     results = load_results(json_path) or {"datasets": {}}
     results.update({"leftblock_version": version, "gitleaks_version": detectors.gitleaks_version()})
+    shard = None
+    if args.deep_shard:
+        index, _, count = args.deep_shard.partition("/")
+        if not (index.isdigit() and count.isdigit() and 0 <= int(index) < int(count)) or datasets != ["creddata"]:
+            raise SystemExit("--deep-shard K/N needs 0 <= K < N and --dataset creddata.")
+        shard = (int(index), int(count))
     work = args.work_dir or os.path.join(root, "work")
     os.makedirs(work, exist_ok=True)
     for name in datasets:
         log("dataset: %s" % name)
         if name == "creddata":
-            record = runner.run_creddata(root, selected, args.seed, args.deep_sample, work, log)
+            record = runner.run_creddata(root, selected, args.seed, args.deep_sample, work, log, shard)
+            if shard:
+                log("shard %d/%d finished" % shard)
+                continue
         else:
             record = runner.run_generated(root, selected, args.seed, work, log)
         results["datasets"][name] = record
@@ -117,6 +126,9 @@ def build_parser():
     run.add_argument("--seed", type=int, default=runner.DEFAULT_SEED)
     run.add_argument("--results-dir", default=DEFAULT_RESULTS)
     run.add_argument("--work-dir", help="scratch directory (default: <data-dir>/work)")
+    run.add_argument("--deep-shard", metavar="K/N",
+                     help="CredData only: just scan every N-th file with the model (this is shard K) into the cache and exit; "
+                          "start several in parallel, then run again without it to score (the model uses only a few cores)")
     run.set_defaults(func=cmd_run)
 
     rep = sub.add_parser("report", help="re-render the Markdown report from the results JSON")

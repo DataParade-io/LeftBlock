@@ -7,6 +7,7 @@ exclusions) on the lines handed to it. Reports are written with ``--redact``
 to a scratch file that is read and deleted; no value is ever kept.
 """
 
+import glob
 import hashlib
 import json
 import os
@@ -103,12 +104,20 @@ def run_gitleaks(root, config=None, prefix=""):
     return flags
 
 
-def run_deep(additions, cache_path=None, log=None):
+def run_deep(additions, cache_path=None, log=None, shard=None):
     """Run LeftBlock's deep scan over ``additions`` ``[(file, line, bytes)]``.
 
     Results are cached per file in ``cache_path`` (JSON lines of
     ``{"file", "findings": [[line, rule], ...]}``) so an interrupted run
-    resumes where it stopped. Returns (Flags, bytes seen by the model).
+    resumes where it stopped. The cache name carries a digest of the lines, so
+    it is only reused for exactly the same lines.
+
+    ``shard=(k, n)`` scans only every n-th file (starting at k), appending to a
+    shard-specific cache file and returning no findings. The model leaves most
+    of a multi-core CPU idle, so several shard processes run in parallel and a
+    final unsharded run reads all the caches and scores them.
+
+    Returns (Flags, bytes of text the model reads).
     """
     detector = deep.load_detector(log)
     if cache_path:
@@ -121,17 +130,24 @@ def run_deep(additions, cache_path=None, log=None):
     for file, line, text in additions:
         by_file.setdefault(file, []).append((file, line, text))
     done = {}
-    if cache_path and os.path.exists(cache_path):
-        with open(cache_path, encoding="utf-8") as handle:
-            for record in map(json.loads, filter(None, map(str.strip, handle))):
-                done[record["file"]] = record["findings"]
+    own = cache_path
+    if cache_path:
+        stem = cache_path[:-len(".jsonl")]
+        for path in sorted(glob.glob(glob.escape(stem) + "*.jsonl")):
+            with open(path, encoding="utf-8") as handle:
+                for record in map(json.loads, filter(None, map(str.strip, handle))):
+                    done[record["file"]] = record["findings"]
+        if shard:
+            own = "%s-shard%d.jsonl" % (stem, shard[0])
     flags = Flags()
     total_bytes = sum(len(t) + 1 for _, _, t in additions)
     started, seen = time.time(), 0
-    out = open(cache_path, "a", encoding="utf-8") if cache_path else None
+    out = open(own, "a", encoding="utf-8") if own else None
     try:
         for index, (file, items) in enumerate(sorted(by_file.items())):
             size = sum(len(t) + 1 for _, _, t in items)
+            if shard and file not in done and index % shard[1] != shard[0]:
+                continue
             if file not in done:
                 found = deep.scan(items, detector, deep.DEFAULT_LABELS, deep.DEFAULT_THRESHOLD, KANBUS_DATA)
                 done[file] = [[f["line"], f["RuleID"]] for f in found]
@@ -139,6 +155,10 @@ def run_deep(additions, cache_path=None, log=None):
                     out.write(json.dumps({"file": file, "findings": done[file]}) + "\n")
                     out.flush()
             seen += size
+            if shard:
+                if log:
+                    log("deep scan shard %d/%d: file %d/%d, %.0f KB scanned, %.0f s" % (shard[0], shard[1], index + 1, len(by_file), seen / 1024, time.time() - started))
+                continue
             # deep.scan reports one finding per distinct (rule, file, line text); a
             # line repeated verbatim elsewhere in the window set is the same finding.
             same = {}

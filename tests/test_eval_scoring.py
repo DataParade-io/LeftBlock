@@ -1,12 +1,13 @@
 """Unit tests for the evaluation harness: scorer, intervals, tier mapping, sampling, data-dir guard."""
 
 import os
-import random
+import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
-from eval import creddata, datadir, scoring, stats, tiers, windows
+from eval import creddata, datadir, detectors, scoring, stats, tiers, windows
 
 
 def unit(file, start, truth, categories, end=None, weight=1.0):
@@ -220,6 +221,75 @@ class GeneratedCorpusTests(unittest.TestCase):
             first = ua[0].file
             with open(os.path.join(a, first)) as fa, open(os.path.join(b, first)) as fb:
                 self.assertNotEqual(fa.read(), fb.read())
+
+
+class DeepCacheTests(unittest.TestCase):
+    """run_deep with a stand-in model: caching, resuming and sharding."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        with open(os.path.join(self.dir, "fake_model.py"), "w") as handle:
+            handle.write(
+                "import os\n"
+                "def factory():\n"
+                "    def detect(text):\n"
+                "        with open(os.environ['FAKE_MODEL_LOG'], 'a') as log:\n"
+                "            log.write('call\\n')\n"
+                "        at = text.find('FLAGME')\n"
+                "        return [(at, at + 6, 'secret', 0.99)] if at >= 0 else []\n"
+                "    return detect\n")
+        self.log = os.path.join(self.dir, "calls.log")
+        sys.path.insert(0, self.dir)
+        self.saved = {k: os.environ.get(k) for k in ("LEFTBLOCK_DEEP_DETECTOR", "FAKE_MODEL_LOG")}
+        os.environ["LEFTBLOCK_DEEP_DETECTOR"] = "fake_model:factory"
+        os.environ["FAKE_MODEL_LOG"] = self.log
+        self.lines = [("f%d.txt" % i, 3, b"value = FLAGME") for i in range(4)] + [("f9.txt", 1, b"nothing here")]
+        self.cache = os.path.join(self.dir, "cache.jsonl")
+
+    def tearDown(self):
+        sys.path.remove(self.dir)
+        for key, value in self.saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def calls(self):
+        if not os.path.exists(self.log):
+            return 0
+        with open(self.log) as handle:
+            return sum(1 for _ in handle)
+
+    def test_findings_are_flagged_and_a_rerun_reads_the_cache(self):
+        flags, size = detectors.run_deep(self.lines, self.cache)
+        self.assertEqual(sorted(flags.lines), [("f%d.txt" % i, 3) for i in range(4)])
+        self.assertEqual(size, sum(len(t) + 1 for _, _, t in self.lines))
+        first = self.calls()
+        self.assertEqual(first, 5)
+        again, _ = detectors.run_deep(self.lines, self.cache)
+        self.assertEqual(again.lines, flags.lines)
+        self.assertEqual(self.calls(), first)
+
+    def test_different_lines_do_not_reuse_the_cache(self):
+        detectors.run_deep(self.lines, self.cache)
+        detectors.run_deep(self.lines[:2], self.cache)
+        self.assertEqual(self.calls(), 7)
+
+    def test_shards_split_the_files_and_a_final_run_scores_from_their_caches(self):
+        for k in range(2):
+            flags, _ = detectors.run_deep(self.lines, self.cache, shard=(k, 2))
+            self.assertEqual(flags.lines, set())
+        after_shards = self.calls()
+        self.assertEqual(after_shards, 5)
+        merged, _ = detectors.run_deep(self.lines, self.cache)
+        self.assertEqual(sorted(merged.lines), [("f%d.txt" % i, 3) for i in range(4)])
+        self.assertEqual(self.calls(), after_shards)
+
+    def test_identical_lines_in_a_file_are_all_credited(self):
+        lines = [("a.txt", 2, b"value = FLAGME"), ("a.txt", 7, b"value = FLAGME")]
+        flags, _ = detectors.run_deep(lines, None)
+        self.assertEqual(sorted(flags.lines), [("a.txt", 2), ("a.txt", 7)])
 
 
 if __name__ == "__main__":

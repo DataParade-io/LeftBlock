@@ -13,7 +13,7 @@ from eval import creddata, detectors, generated, scoring, tiers, windows
 
 DEFAULT_SEED = 20261028
 DEFAULT_DEEP_SAMPLE = 1000  # chosen so the whole run takes roughly 1.5 h; see eval/README.md
-MODEL_SECONDS_PER_KB = 1.1  # measured on the machine that produced the committed results
+MODEL_SECONDS_PER_KB = 2.0  # one process, Apple M1 Max, machine otherwise busy; 1.1 when idle
 
 
 def unit_counts(units, excluded, rows=None, files=None):
@@ -124,7 +124,7 @@ def timing_of(flags):
     return {name: round(f.seconds, 1) for name, f in flags.items()}
 
 
-def run_creddata(root, selected, seed, deep_sample, work, log=print):
+def run_creddata(root, selected, seed, deep_sample, work, log=print, shard=None):
     started = time.time()
     selected = expand_selection(selected)
     clone, _ = creddata.paths(root)
@@ -132,6 +132,8 @@ def run_creddata(root, selected, seed, deep_sample, work, log=print):
     units = loaded["units"]
     log("loaded %d labelled lines (%d true, %d false), %d excluded as X" % (
         len(units), sum(u.truth == "T" for u in units), sum(u.truth == "F" for u in units), loaded["excluded"]))
+    if shard:
+        return deep_shard(root, units, seed, deep_sample, work, log, shard)
     aws_counts, aws_valid = creddata.aws_probe(root)
     subsets = {"AWS Client ID, key still gitleaks-shaped": lambda u: (u.file, u.start, u.end) in aws_valid}
 
@@ -154,10 +156,7 @@ def run_creddata(root, selected, seed, deep_sample, work, log=print):
 
     # --- windows: every detector on the same sample ---------------------------------
     if detectors.DEEP in selected or detectors.COMBINED in selected:
-        sample = creddata.select_sample(units, deep_sample, seed)
-        counts = creddata.line_counts(clone, {u.file for u in sample})
-        wins = windows.window_lines(sample, counts, creddata.CONTEXT_LINES)
-        extra = windows.additions(clone, wins)
+        sample, wins, extra = deep_window_input(root, units, seed, deep_sample)
         kb = sum(len(t) + 1 for _, _, t in extra) / 1024
         log("deep sample: %d lines in %d files, %d context lines, %.0f KB for the model (about %.0f min)" % (
             len(sample), len(wins), len(extra), kb, kb * MODEL_SECONDS_PER_KB / 60))
@@ -185,6 +184,23 @@ def run_creddata(root, selected, seed, deep_sample, work, log=print):
         record["windows"] = result
     record["seconds_total"] = round(time.time() - started, 1)
     return record
+
+
+def deep_window_input(root, units, seed, deep_sample):
+    """The sample, its context windows and the lines the model reads."""
+    clone, _ = creddata.paths(root)
+    sample = creddata.select_sample(units, deep_sample, seed)
+    counts = creddata.line_counts(clone, {u.file for u in sample})
+    wins = windows.window_lines(sample, counts, creddata.CONTEXT_LINES)
+    return sample, wins, windows.additions(clone, wins)
+
+
+def deep_shard(root, units, seed, deep_sample, work, log, shard):
+    """Scan one shard of the deep-scan input into the cache; no scoring."""
+    _, _, extra = deep_window_input(root, units, seed, deep_sample)
+    cache = os.path.join(work, "deep-cache-%d-%d.jsonl" % (seed, deep_sample))
+    detectors.run_deep(extra, cache, log, shard)
+    return None
 
 
 def run_generated(root, selected, seed, work, log=print):
