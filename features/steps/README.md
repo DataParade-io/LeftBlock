@@ -53,6 +53,26 @@ Hook output (including a block) arrives on stderr of the commit.
   `an unsigned commit containing a synthetic {kind}` (all `--no-verify`)
 - `the latest commit message contains "{text}"` / `... does not contain "{text}"`
 
+## Deep scan steps (`ch17_deep_scan_steps.py`, chapter 17)
+
+The model is never downloaded in specs: `LEFTBLOCK_DEEP_DETECTOR` names
+`features/stub_detector.py`, which flags the values these steps register.
+
+- `the deep scan model is replaced by a stub detector` /
+  `the deep scan extra is not installed`
+- `a staged file "{name}" containing a {kind} that the model flags as {label} at {score}`
+  (kinds are listed in the step module, e.g. `credential-shaped value`,
+  `work email`, `UUID-shaped value`, `<word>-marked credential`)
+- `the file "{name}" is deleted and committed`,
+  `the flagged line in "{name}" is reworded and staged`
+- `I note the finding ids from a deep scan`,
+  `I record a deep scan override for the noted findings because "{reason}"`
+- `a finding is reported at "{name}" line {n} for rule "{rule}" with score {score}`,
+  `no finding is reported`, `{n} findings are reported`
+- `the model was never consulted` / `the model was consulted`,
+  `the output has no ANSI escape codes`,
+  `the staged allow file records rule "{rule}" for "{name}"`
+
 ## Synthetic kinds
 
 Used as `a synthetic <kind>`. The content shown is what ends up in the file.

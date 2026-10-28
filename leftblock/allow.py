@@ -47,7 +47,11 @@ def finding_id(repo_root, rule, file, start, end):
     lines = proc.stdout.decode("utf-8", errors="replace").split("\n")
     if end > len(lines):
         return None
-    content = "\n".join(lines[start - 1:end])
+    return content_id(rule, file, "\n".join(lines[start - 1:end]))
+
+
+def content_id(rule, file, content):
+    """The id of one rule on one exact line content in one file."""
     digest = hashlib.sha256(f"{rule}\0{file}\0{content}".encode("utf-8"))
     return digest.hexdigest()[:16]
 
