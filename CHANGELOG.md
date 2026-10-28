@@ -8,6 +8,27 @@ remain unchanged; commit links retain their original hashes.
 
 <!-- version list -->
 
+## v0.7.0 (2026-10-28)
+
+### Features
+
+- **eval**: Add detection-evaluation harness
+  ([`cc770a8`](https://github.com/DataParade-io/LeftBlock/commit/cc770a848550de533299f2e824da1de20cfbc563))
+
+Scores stock gitleaks, gitleaks with the shipped ruleset, the deep scan and their combination
+  against labelled lines (CredData and a generated corpus), with Wilson intervals, a critical tier
+  of credential categories, X lines excluded and counted, flags on unlabelled lines kept apart, and
+  a stratified, weighted sample so the deep scan reads context windows rather than 19M lines. Adds
+  unit tests and Gherkin chapter 18.
+
+- **eval**: Shard the deep scan and add the 0.6.0 results
+  ([`3f40768`](https://github.com/DataParade-io/LeftBlock/commit/3f407682f6dee434e63e238b8e4775f281a10162))
+
+The model uses only about two cores, so --deep-shard K/N lets several processes fill the per-file
+  cache in parallel before a final run scores it. Adds the first committed run: CredData (60,820
+  labelled lines, deep scan on a 6,979-line weighted sample) and the generated corpus (528 files).
+
+
 ## v0.6.0 (2026-10-28)
 
 ### Chores
