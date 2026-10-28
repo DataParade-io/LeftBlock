@@ -511,6 +511,31 @@ test time from a seeded RNG — no real credential ever appears in the repo.
 
 ---
 
+## How well does it work?
+
+We measure it. The evaluation harness in [`eval/`](eval/README.md) scores four detectors on labelled data: stock gitleaks, gitleaks with LeftBlock's rules, the [deep scan](#deep-scan-optional), and the last two combined. It uses [Samsung CredData](https://github.com/Samsung/CredData) (60,820 labelled lines from 11,030 files of real open-source repositories, values obfuscated) and a seeded corpus of fake provider keys (528 lines). The 0.6.0 results, with 95% Wilson intervals:
+
+| CredData | Recall | Precision | Critical-tier recall |
+|---|---|---|---|
+| (a) stock gitleaks, all labelled lines | 45.8% (45.1-46.6) | 86.3% (85.5-87.0) | 29.8% (28.7-31.0) |
+| (b) gitleaks, LeftBlock rules, all labelled lines | 60.2% (59.5-61.0) | 75.0% (74.2-75.8) | 31.6% (30.4-32.8) |
+| (b) on the deep-scan sample | 57.7% (53.1-62.1) | 74.3% (68.6-79.3) | 31.6% (30.4-32.8) |
+| (c) deep scan, same sample | 65.7% (61.2-69.9) | 91.8% (88.6-94.2) | 83.8% (82.9-84.7) |
+| (d) LeftBlock + deep scan, same sample | 88.2% (84.9-90.8) | 78.4% (74.4-82.0) | 85.8% (84.9-86.7) |
+
+| Generated provider keys | Recall | Precision |
+|---|---|---|
+| (a) stock gitleaks | 66.4% | 98.2% |
+| (b) gitleaks, LeftBlock rules | 96.1% | 93.3% |
+| (c) deep scan | 77.5% | 92.4% |
+| (d) combined | 99.3% | 91.6% |
+
+Read these with care. The "critical tier" is passwords, cloud and provider keys, private keys and auth headers; precision is measured on lines CredData labelled, which are hard negatives, so it is not a false-alarm rate; the model may have seen CredData in training. [`eval/README.md`](eval/README.md) explains the method, the caveats and how to read every number, and gives one command to reproduce all of it:
+
+```bash
+python -m eval reproduce --skip-deep   # gitleaks only; minutes plus a one-time ~3 GB CredData download
+```
+
 ## Custom Agent-Based Scanning (Tactus)
 
 While standard tools like Gitleaks are great for finding AWS IAM keys, they struggle with subtle, context-dependent leaks—like mentioning a confidential client's name or proprietary business logic.

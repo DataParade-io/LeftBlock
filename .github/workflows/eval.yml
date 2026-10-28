@@ -1,0 +1,70 @@
+name: Eval
+
+# Manual only: reproduces the detection evaluation (eval/README.md) on a clean
+# Linux runner, uploads the results as an artifact and shows the comparison
+# with the committed results in the job summary. It never commits, never fails
+# on differences, and never runs on push or pull request.
+on:
+  workflow_dispatch:
+    inputs:
+      deep:
+        description: "Also run the deep scan on a small sample (a pipeline check, not an estimate)"
+        type: boolean
+        default: false
+      deep_files:
+        description: "With deep: number of CredData files the model reads"
+        type: string
+        default: "40"
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install pinned gitleaks
+      run: |
+        GITLEAKS_VERSION=8.30.1
+        curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o gitleaks.tgz
+        tar -xzf gitleaks.tgz gitleaks
+        sudo install gitleaks /usr/local/bin/gitleaks
+        gitleaks version
+
+    - name: Install the evaluation
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+        if [ "${{ inputs.deep }}" = "true" ]; then
+          pip install -r eval/requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+        else
+          pip install pybase62==1.0.0
+        fi
+
+    - name: Reproduce
+      run: |
+        FLAGS="--skip-deep"
+        if [ "${{ inputs.deep }}" = "true" ]; then FLAGS="--deep-smoke-files ${{ inputs.deep_files }}"; fi
+        df -h .
+        python -m eval reproduce $FLAGS --data-dir "$RUNNER_TEMP/leftblock-eval-data" --results-dir "$RUNNER_TEMP/eval-results"
+
+    - name: Compare with the committed results
+      run: |
+        VERSION="$(python -c 'from leftblock import cli; print(cli.leftblock_version())')"
+        python -m eval compare "eval/results/${VERSION}.json" "$RUNNER_TEMP/eval-results/${VERSION}.json" | tee -a "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload the results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: eval-results
+        path: ${{ runner.temp }}/eval-results/
+        if-no-files-found: ignore

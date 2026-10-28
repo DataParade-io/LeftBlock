@@ -146,14 +146,17 @@ def _normalise(label):
 class PrivacyFilter:
     """The real model, through the transformers token-classification pipeline (CPU)."""
 
-    def __init__(self, notify=None):
+    def __init__(self, notify=None, revision=None):
         self.notify = notify or (lambda message: None)
+        # A Hugging Face commit hash pins the weights (the evaluation harness
+        # does); None follows the model's default branch, as before.
+        self.revision = revision
         self._pipeline = None
 
     def _load(self):
         try:
             from huggingface_hub import try_to_load_from_cache
-            cached = isinstance(try_to_load_from_cache(MODEL, "config.json"), str)
+            cached = isinstance(try_to_load_from_cache(MODEL, "config.json", revision=self.revision), str)
         except Exception:
             cached = False
         if not cached:
@@ -163,8 +166,9 @@ class PrivacyFilter:
             )
         try:
             from transformers import pipeline
+            options = {"revision": self.revision} if self.revision else {}
             self._pipeline = pipeline(
-                "token-classification", model=MODEL, aggregation_strategy="simple", device=-1,
+                "token-classification", model=MODEL, aggregation_strategy="simple", device=-1, **options,
             )
         except ImportError:
             raise ExtraMissing()
@@ -183,8 +187,11 @@ class PrivacyFilter:
         return spans
 
 
-def load_detector(notify=None):
-    """The detector to use: the test stub if DETECTOR_ENV names one, else the real model."""
+def load_detector(notify=None, revision=None):
+    """The detector to use: the test stub if DETECTOR_ENV names one, else the real model.
+
+    ``revision`` pins the model to one Hugging Face commit (the stub ignores it).
+    """
     spec = os.environ.get(DETECTOR_ENV)
     if spec:
         module, _, name = spec.partition(":")
@@ -197,7 +204,7 @@ def load_detector(notify=None):
     for package in ("transformers", "torch"):
         if importlib.util.find_spec(package) is None:
             raise ExtraMissing()
-    return PrivacyFilter(notify)
+    return PrivacyFilter(notify, revision)
 
 
 # --- Reading the diff -------------------------------------------------------------

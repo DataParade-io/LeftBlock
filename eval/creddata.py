@@ -12,6 +12,7 @@ returns or prints a value.
 
 import csv
 import glob
+import json
 import os
 import random
 import re
@@ -19,15 +20,16 @@ import shutil
 import subprocess
 import sys
 
-from eval import datadir, scoring, tiers
+from eval import datadir, pins, provenance, scoring, tiers
 
-REPOSITORY = "https://github.com/Samsung/CredData.git"
-PINNED_COMMIT = "fc9b64bed812fe2a10b83eaa4498a4ba8f3de5e4"
+REPOSITORY = pins.CREDDATA_REPOSITORY
+PINNED_COMMIT = pins.CREDDATA_COMMIT
+MARKER = ".leftblock-fetch-complete"  # written when the download finished; its absence means "incomplete"
 
-# The download needs about 10 GB of scratch space (shallow clones of 297
-# repositories, then the 11k selected files); refuse to start with less than
-# this much free so the disk is never filled.
-MIN_FREE_GB_TO_FETCH = 30
+# The download peaks at about 15 GB of scratch space (shallow clones of 297
+# repositories, then the 11k selected files; about 1 GB is kept); refuse to
+# start with less than this much free so the disk is never filled.
+MIN_FREE_GB_TO_FETCH = 25
 
 CONTEXT_LINES = 5   # deep-scan window radius
 MIN_PER_STRATUM = 3  # every stratum keeps at least this many sampled units (or all of it)
@@ -84,8 +86,10 @@ def select_sample(units, rest_size, seed):
     (truth, critical?, primary category), proportionally to ``rest_size`` with
     at least MIN_PER_STRATUM per stratum. Each sampled unit carries the weight
     N_stratum / n_stratum so population rates can be estimated from the sample.
-    Deterministic for a given ``seed``.
+    Deterministic for a given ``seed`` and independent of the order ``units``
+    arrive in (they are put in key order first).
     """
+    units = sorted(units, key=lambda u: (u.file, u.start, u.end))
     census = [u for u in units if u.truth == "T" and tiers.in_tier(u.categories, tiers.CRITICAL)]
     rest = [u for u in units if not (u.truth == "T" and tiers.in_tier(u.categories, tiers.CRITICAL))]
     strata = {}
@@ -102,6 +106,17 @@ def select_sample(units, rest_size, seed):
     return chosen
 
 
+def smoke_subset(sample, file_count, seed):
+    """The units of ``file_count`` files drawn (seeded) from the sample's files.
+
+    A smoke run exercises the whole pipeline on a few files in minutes; it is
+    not a sample of the population, so its weights mean nothing.
+    """
+    files = sorted({u.file for u in sample})
+    chosen = set(random.Random("smoke-%d" % seed).sample(files, min(file_count, len(files))))
+    return [u for u in sample if u.file in chosen]
+
+
 def line_counts(root, files):
     """Number of lines per file; ``root`` is the directory the file ids are relative to."""
     counts = {}
@@ -111,14 +126,31 @@ def line_counts(root, files):
     return counts
 
 
+def fetched(root):
+    """True when the pinned download finished (the marker names the pinned commit)."""
+    clone, _ = paths(root)
+    try:
+        with open(os.path.join(clone, MARKER), encoding="utf-8") as handle:
+            return json.load(handle).get("commit") == PINNED_COMMIT
+    except (OSError, ValueError):
+        return False
+
+
 def fetch(root, log=print):
-    """Clone CredData at the pinned commit and run its ``download_data.py`` into ROOT/data."""
+    """Clone CredData at the pinned commit and run its ``download_data.py`` into ROOT/CredData/data.
+
+    Returns 0 when the dataset is present and complete. A directory left by an
+    interrupted download is not trusted: it is reported, never reused.
+    """
     root = datadir.require_outside_git(root)
     clone, data = paths(root)
     os.makedirs(root, exist_ok=True)
-    if os.path.isdir(data):
-        log("Dataset already present at the data directory; nothing to fetch.")
+    if fetched(root):
+        log("CredData is already present at the pinned commit; nothing to fetch.")
         return 0
+    if os.path.isdir(data):
+        log("The CredData download in %s did not finish (no completion marker). Delete %s and run again." % (root, clone))
+        return 2
     free_gb = shutil.disk_usage(root).free / 2 ** 30
     if free_gb < MIN_FREE_GB_TO_FETCH:
         log("Only %.0f GB free; the download needs about %d GB of headroom. Stopping." % (free_gb, MIN_FREE_GB_TO_FETCH))
@@ -134,7 +166,26 @@ def fetch(root, log=print):
     ).returncode
     if code == 0:
         shutil.rmtree(os.path.join(clone, "tmp"), ignore_errors=True)
+        head = subprocess.run(["git", "-C", clone, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        with open(os.path.join(clone, MARKER), "w", encoding="utf-8") as handle:
+            json.dump({"commit": head}, handle)
+            handle.write("\n")
     return code
+
+
+def inputs(root, loaded):
+    """The ``inputs`` block of a CredData record: pin and digests of what was actually read."""
+    clone, data = paths(root)
+    data_digest, data_files = provenance.tree_sha256(data)
+    return {
+        "repository": REPOSITORY,
+        "commit": PINNED_COMMIT,
+        "labels_sha256": provenance.labels_sha256(clone),
+        "data_sha256": data_digest,
+        "data_files": data_files,
+        "label_files": len(glob.glob(os.path.join(clone, "meta", "*.csv"))),
+        "label_rows_without_file": loaded["missing_rows"],
+    }
 
 
 # --- How CredData rewrote AWS access key ids -------------------------------------

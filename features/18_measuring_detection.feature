@@ -210,3 +210,158 @@ Feature: Measuring detection
     When I evaluate with the data directory inside that repository
     Then the exit code is 2
     And stderr contains "inside a Git repository"
+
+  # --- Running it from a fresh clone -------------------------------------------------------------
+
+  Scenario: A missing gitleaks is reported with the command that installs the pinned one
+    Given a fixture dataset
+    And gitleaks is not installed
+    When I check the evaluation prerequisites without the deep scan
+    Then the exit code is 2
+    And stderr contains "gitleaks is not installed"
+    And stderr contains "releases/download/v8.30.1"
+
+  Scenario: A missing deep-scan extra is reported with the command that installs it
+    Given a fixture dataset
+    And gitleaks at the pinned version
+    And the deep scan extra is not installed
+    When I check the evaluation prerequisites with the deep scan
+    Then the exit code is 2
+    And stderr contains "transformers and torch"
+    And stderr contains "eval/requirements.txt"
+
+  Scenario: With everything in place the check says so
+    Given a fixture dataset
+    And gitleaks at the pinned version
+    When I check the evaluation prerequisites without the deep scan
+    Then the exit code is 0
+    And stdout contains "All prerequisites are in place"
+
+  @gitleaks
+  Scenario: Another gitleaks version is refused
+    Given a fixture dataset
+    And the fixture labels these lines:
+      | truth | category    | shape       |
+      | T     | Slack Token | ruleset key |
+    And gitleaks reporting version 8.0.0
+    When I evaluate the fixture with detectors "leftblock" and no mismatch allowance
+    Then the exit code is 2
+    And stderr contains "pins 8.30.1"
+    And no results were written
+
+  @gitleaks
+  Scenario: Another gitleaks version can be allowed, loudly, and the results say so
+    Given a fixture dataset
+    And the fixture labels these lines:
+      | truth | category    | shape       |
+      | T     | Slack Token | ruleset key |
+    And gitleaks reporting version 8.0.0
+    When I evaluate the fixture with detectors "leftblock"
+    Then the evaluation succeeds
+    And stdout contains "WARNING: gitleaks 8.0.0 is installed but the evaluation pins 8.30.1"
+    And the results record gitleaks 8.0.0 as not matching the pin
+
+  @gitleaks
+  Scenario: Every input that can change the numbers is recorded
+    Given a fixture dataset
+    And the fixture labels these lines:
+      | truth | category    | shape             |
+      | T     | Slack Token | ruleset key       |
+      | T     | Password    | model-only secret |
+    And the model flags the fixture's model-only secrets as secret at 0.97
+    When I evaluate the fixture with detectors "stock,leftblock,deep,combined"
+    Then the evaluation succeeds
+    And the results record the gitleaks version and the pinned one
+    And the results record the CredData commit and digests of its labels and files
+    And the results record the tier definition and the ruleset digests
+    And the results record the seed and the deep sample size
+    And the results record the deep-scan model at its pinned revision
+    And the report lists these inputs in a provenance section
+
+  @gitleaks
+  Scenario: One command checks, fetches, runs and writes the results
+    Given a fixture dataset
+    When I reproduce the evaluation without the deep scan
+    Then the exit code is 0
+    And the reproduced results hold both datasets
+    And stdout contains "python -m eval compare"
+
+  @gitleaks
+  Scenario: Nothing starts when a prerequisite is missing
+    Given a fixture dataset
+    And gitleaks is not installed
+    When I reproduce the evaluation without the deep scan
+    Then the exit code is 2
+    And stderr contains "nothing was done"
+    And no results were written
+
+  Scenario: A data directory left by an interrupted download is not trusted
+    Given a fixture dataset
+    And the fixture download did not finish
+    When I reproduce the evaluation without the deep scan
+    Then the exit code is 2
+    And stderr contains "did not finish"
+
+  @gitleaks
+  Scenario: A smoke run reads only a few files with the model and says it is not an estimate
+    Given a fixture dataset
+    And the fixture labels these lines:
+      | truth | category | shape             |
+      | T     | Password | model-only secret |
+      | T     | Password | model-only secret |
+      | T     | Password | model-only secret |
+    And the model flags the fixture's model-only secrets as secret at 0.97
+    When I reproduce the evaluation with a deep smoke run on 2 files
+    Then the exit code is 0
+    And the reproduced deep sample reads 2 files and is marked as a smoke run
+    And the reproduced generated corpus is scored without the deep scan
+
+  @gitleaks
+  Scenario: An interrupted deep scan resumes without reading the finished files again
+    Given a fixture dataset
+    And the fixture labels these lines:
+      | truth | category | shape             |
+      | T     | Password | model-only secret |
+      | T     | Password | model-only secret |
+      | T     | Password | model-only secret |
+      | T     | Password | model-only secret |
+    And the model flags the fixture's model-only secrets as secret at 0.97
+    And the model is interrupted after 2 calls
+    When I reproduce the evaluation with a deep smoke run on 4 files
+    Then the exit code is not 0
+    When the interruption is over and I reproduce again
+    Then the exit code is 0
+    And the model was consulted for 2 more calls
+    And the reproduced deep scan scores 4 true positives
+
+  # --- Comparing two results files -----------------------------------------------------------------
+
+  @gitleaks
+  Scenario: Comparing a results file with itself shows nothing moved
+    Given a fixture dataset
+    And the fixture labels these lines:
+      | truth | category    | shape       |
+      | T     | Slack Token | ruleset key |
+    When I evaluate the fixture with detectors "stock,leftblock"
+    And I compare the results with themselves
+    Then the exit code is 0
+    And stdout contains "0 of"
+    And stdout contains "None: same pins"
+
+  @gitleaks
+  Scenario: Comparing shows which numbers and inputs moved and never fails on them
+    Given a fixture dataset
+    And the fixture labels these lines:
+      | truth | category    | shape       |
+      | T     | Slack Token | ruleset key |
+    When I evaluate the fixture with detectors "stock,leftblock"
+    And I compare the results with a copy whose LeftBlock recall and gitleaks version are changed
+    Then the exit code is 0
+    And stdout contains "12.3%"
+    And stdout contains "gitleaks.version"
+
+  Scenario: Comparing needs two readable files
+    Given a fixture dataset
+    When I compare two results files that do not exist
+    Then the exit code is 2
+    And stderr contains "Cannot read a results file"
