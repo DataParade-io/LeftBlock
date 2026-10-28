@@ -91,7 +91,7 @@ configures the integration; it does not install scanner binaries.
 In the intended Python environment:
 
 ```bash
-python -m pip install leftblock==0.5.1
+python -m pip install leftblock==0.6.0
 python -m leftblock.cli --help
 ```
 

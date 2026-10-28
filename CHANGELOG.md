@@ -8,6 +8,38 @@ remain unchanged; commit links retain their original hashes.
 
 <!-- version list -->
 
+## v0.6.0 (2026-10-28)
+
+### Chores
+
+- **kanbus**: File full-repository scan option
+  ([`77685a9`](https://github.com/DataParade-io/LeftBlock/commit/77685a979f7c1988c4c11ba1472b3cf7f96715d6))
+
+- **kanbus**: Status update before pause; close items with evidence
+  ([`e0a682a`](https://github.com/DataParade-io/LeftBlock/commit/e0a682a54bc4e38b3cc3024af9642a1207cacfca))
+
+- **kanbus**: Story for OpenAI Privacy Filter integration
+  ([`3a281fe`](https://github.com/DataParade-io/LeftBlock/commit/3a281fe7bb0f755cd67fd5ee25350821093fbee9))
+
+### Features
+
+- **deep-scan**: Add opt-in model-based deep scan
+  ([`d92ca11`](https://github.com/DataParade-io/LeftBlock/commit/d92ca11114dd5ed792b2a90025b7d8d90d609908))
+
+leftblock deep-scan reads the added lines of the staged diff (or of a commit range with --range
+  A..B, for CI) with OpenAI's Privacy Filter through the transformers token-classification pipeline
+  on CPU. It ships as the optional leftblock[deep] extra and is never run by the commit hook.
+
+Defaults come from a local evaluation: secret, private_email, private_phone and private_address at
+  score >= 0.9; the other four labels are opt-in with --labels, the cut-off is --threshold. Kanbus
+  board data, generated/vendored/lock files, identifier-shaped secrets, placeholder lines and
+  already-allowed addresses are skipped. Findings carry recorded override ids (rule
+  privacy-filter-<label>, leftblock allow --deep) and never print the matched value.
+
+The detector sits behind a text -> (start, end, label, score) interface; specs swap it for a stub
+  via LEFTBLOCK_DEEP_DETECTOR. Adds chapter 17 specs and unit tests for the filters.
+
+
 ## v0.5.1 (2026-10-22)
 
 ### Bug Fixes
