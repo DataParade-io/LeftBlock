@@ -5,3 +5,11 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+
+# Detection-evaluation data (eval/README.md). The harness refuses a data
+# directory inside any Git repository; these names are a second guard.
+CredData/
+creddata/
+lb-eval-data/
+leftblock-eval-data/
+eval/work/

@@ -60,3 +60,12 @@ authors are in [steps/README.md](steps/README.md).
     threshold, enabling off labels, the exclusions, recorded overrides,
     `--range` for CI, exit codes, and never printing the matched value. The
     specs swap the model for a stub detector.
+18. **Measuring detection** (`18_measuring_detection`). The evaluation harness in
+    `eval/` (not packaged, never run in full by CI): recall and precision of
+    stock gitleaks, the shipped ruleset, the deep scan and their combination over
+    labelled lines, with Wilson intervals, a critical tier of credential
+    categories, X-labelled lines excluded and counted, flags on unlabelled lines
+    kept apart, the deep scan reading windows around a sample, reports free of
+    values and paths, and a data directory that must sit outside any Git
+    repository. The specs build a tiny CredData-shaped dataset at run time and
+    swap the model for the stub detector.
