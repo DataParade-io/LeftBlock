@@ -101,6 +101,38 @@ def adds_table(adds, weighted):
                   "Sampled lines"], [[cat, grp, ("%.0f" % v) if weighted else v, n] for v, cat, grp, n in rows[:20]])
 
 
+def provenance_section(results):
+    """What produced this file: pins, versions, seeds. Empty for files written before provenance was recorded."""
+    p = results.get("provenance")
+    if not p:
+        return ""
+    rows = [["LeftBlock", "%s (git %s%s)" % (p["leftblock"]["version"], (p["leftblock"]["git_sha"] or "unknown")[:12],
+                                           ", uncommitted changes" if p["leftblock"].get("git_dirty") else "")],
+            ["gitleaks", "%s (pinned %s%s)" % (p["gitleaks"]["version"], p["gitleaks"]["pinned"],
+                                              "" if p["gitleaks"]["matches_pin"] else ", MISMATCH")],
+            ["Shipped ruleset SHA-256", "`%s`" % p["eval"]["ruleset_sha256"][:16]],
+            ["Tier definition SHA-256", "`%s`" % p["eval"]["tiers_sha256"][:16]],
+            ["Seed / deep sample requested", "%s / %s%s" % (p["arguments"]["seed"], p["arguments"]["deep_sample"],
+                                                           ", SMOKE RUN on %s files (deep numbers are not estimates)" % p["arguments"]["deep_smoke_files"]
+                                                           if p["arguments"].get("deep_smoke_files") else "")]]
+    cd = results["datasets"].get("creddata", {}).get("inputs")
+    if cd:
+        rows.append(["CredData commit", "`%s`" % cd["commit"][:12]])
+        rows.append(["CredData labels / files SHA-256", "`%s` / `%s` (%d files)" % (cd["labels_sha256"][:16], cd["data_sha256"][:16], cd["data_files"])])
+    gen = results["datasets"].get("generated", {}).get("inputs")
+    if gen:
+        rows.append(["Generated corpus SHA-256", "`%s` (%d files, seed %d)" % (gen["corpus_sha256"][:16], gen["files"], gen["seed"])])
+    d = p.get("deep_scan")
+    if d:
+        rows.append(["Deep-scan model", "`%s` at revision `%s`; labels %s; threshold %s; CPU, %s torch threads%s"
+                     % (d["model"], d["revision"][:12], "/".join(d["labels"]), d["threshold"], d.get("torch_threads") or "?",
+                        "; STUB DETECTOR" if d.get("stub") else "")])
+    e = p["environment"]
+    rows.append(["Python / OS", "%s %s on %s %s" % (e["implementation"], e["python"], e["system"], e["machine"])])
+    rows.append(["Packages", ", ".join("%s %s" % kv for kv in sorted(e["packages"].items())) or "none recorded"])
+    return "## Provenance\n\nEvery input that can change the numbers. Digests are SHA-256 (first 16 hex digits shown; the JSON has them in full).\n\n" + table(["Input", "Value"], rows) + "\n"
+
+
 def render(results):
     out = []
     version = results["leftblock_version"]
@@ -110,6 +142,7 @@ def render(results):
                "Counts, rates and category names only: no values, no file contents, no dataset file paths.\n"
                % results["gitleaks_version"])
     datasets = results["datasets"]
+    out.append(provenance_section(results))
 
     out.append("## How to read the numbers\n")
     out.append(

@@ -13,3 +13,6 @@ creddata/
 lb-eval-data/
 leftblock-eval-data/
 eval/work/
+
+# Virtual environment suggested by eval/README.md
+.venv-eval/

@@ -1,0 +1,15 @@
+# Exact pins for the detection evaluation (python -m eval). Install with:
+#   pip install -e . -r eval/requirements.txt
+# Tested on Python 3.12 (macOS arm64) and 3.11 (Linux, CI). The deep scan needs Python 3.10+.
+# --skip-deep runs need only `pip install -e .`; the first line below is for CredData's own downloader.
+pybase62==1.0.0
+
+# The deep scan (Privacy Filter model, CPU). On Linux the default torch wheel pulls ~2 GB of CUDA
+# libraries; the CPU build is much smaller: add
+#   --extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.15.0
+transformers==5.21.0
+tokenizers==0.23.3
+huggingface-hub==2.3.0
+safetensors==0.8.0
+numpy==2.5.4

@@ -20,6 +20,8 @@ from collections import Counter
 
 from leftblock import deep
 
+from eval import pins
+
 STOCK = "gitleaks-stock"
 LEFTBLOCK = "gitleaks-leftblock"
 DEEP = "deep-scan"
@@ -62,16 +64,45 @@ class Flags:
         return merged
 
 
+class GitleaksMismatch(RuntimeError):
+    pass
+
+
 def gitleaks_binary():
     found = shutil.which("gitleaks")
     if not found:
-        raise RuntimeError("gitleaks is not on PATH (CI pins 8.30.1).")
+        raise RuntimeError("gitleaks is not installed (the evaluation pins %s; see eval/README.md)." % pins.GITLEAKS_VERSION)
     return found
 
 
+def normalise_version(text):
+    """``"v8.30.1\n"`` -> ``"8.30.1"``."""
+    parts = (text or "").strip().split()
+    return parts[0].lstrip("v") if parts else ""
+
+
 def gitleaks_version():
-    out = subprocess.run([gitleaks_binary(), "version"], capture_output=True, text=True).stdout
-    return out.strip()
+    proc = subprocess.run([gitleaks_binary(), "version"], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    return normalise_version(proc.stdout)
+
+
+def gitleaks_state(allow_mismatch=False, warn=None):
+    """``{"version", "pinned", "matches_pin"}`` for the gitleaks on PATH.
+
+    A version other than the pinned one raises GitleaksMismatch, unless
+    ``allow_mismatch`` is set: then ``warn(message)`` is called loudly and the
+    mismatch is recorded in the results (``matches_pin: false``).
+    """
+    version = gitleaks_version()
+    state = {"version": version, "pinned": pins.GITLEAKS_VERSION, "matches_pin": version == pins.GITLEAKS_VERSION}
+    if not state["matches_pin"]:
+        message = ("gitleaks %s is installed but the evaluation pins %s; counts from another version are not comparable "
+                   "(see eval/README.md for how to install the pinned one)." % (version or "(unknown)", pins.GITLEAKS_VERSION))
+        if not allow_mismatch:
+            raise GitleaksMismatch(message + " Pass --allow-gitleaks-mismatch to run anyway; the mismatch is then recorded in the results.")
+        if warn:
+            warn("WARNING: " + message)
+    return state
 
 
 def run_gitleaks(root, config=None, prefix=""):
@@ -81,13 +112,16 @@ def run_gitleaks(root, config=None, prefix=""):
     fd, report = tempfile.mkstemp(prefix="gitleaks-report-", suffix=".json")
     os.close(fd)
     try:
+        # Scanning "." from inside ``root`` keeps the reported paths relative, so no
+        # directory name above the corpus (a "vendor" or "dist" parent) can change
+        # which of the rules' path allowlists apply.
         command = [
-            gitleaks_binary(), "dir", root, "--no-banner", "--redact", "--exit-code", "0",
+            gitleaks_binary(), "dir", ".", "--no-banner", "--redact", "--exit-code", "0",
             "--log-level", "error", "--report-format", "json", "--report-path", report,
         ]
         if config:
             command += ["--config", config]
-        proc = subprocess.run(command, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        proc = subprocess.run(command, capture_output=True, text=True, stdin=subprocess.DEVNULL, cwd=root)
         if proc.returncode:
             raise RuntimeError("gitleaks failed (exit %d)" % proc.returncode)
         with open(report, encoding="utf-8") as handle:
@@ -99,18 +133,20 @@ def run_gitleaks(root, config=None, prefix=""):
         path = os.path.realpath(item["File"]) if os.path.isabs(item["File"]) else item["File"]
         if path.startswith(base):
             path = path[len(base):]
+        path = path.replace(os.sep, "/")  # file ids are POSIX paths on every OS
         flags.add(prefix + path, int(item["StartLine"]), int(item["EndLine"]), item["RuleID"])
     flags.seconds = time.time() - started
     return flags
 
 
-def run_deep(additions, cache_path=None, log=None, shard=None):
+def run_deep(additions, cache_path=None, log=None, shard=None, revision=None):
     """Run LeftBlock's deep scan over ``additions`` ``[(file, line, bytes)]``.
 
     Results are cached per file in ``cache_path`` (JSON lines of
     ``{"file", "findings": [[line, rule], ...]}``) so an interrupted run
     resumes where it stopped. The cache name carries a digest of the lines, so
-    it is only reused for exactly the same lines.
+    it is only reused for exactly the same lines and model revision. A record
+    cut short by an interruption (a partial last line) is ignored and rescanned.
 
     ``shard=(k, n)`` scans only every n-th file (starting at k), appending to a
     shard-specific cache file and returning no findings. The model leaves most
@@ -119,11 +155,12 @@ def run_deep(additions, cache_path=None, log=None, shard=None):
 
     Returns (Flags, bytes of text the model reads).
     """
-    detector = deep.load_detector(log)
+    detector = deep.load_detector(log, revision)
     if cache_path:
-        # The cache is only valid for exactly these lines.
-        digest = hashlib.sha1()
-        for file, line, text in additions:
+        # The cache is only valid for exactly these lines and this model.
+        digest = hashlib.sha256()
+        digest.update(("%s@%s\0" % (deep.MODEL, revision)).encode())
+        for file, line, text in sorted(additions, key=lambda a: (a[0], a[1])):
             digest.update(("%s\0%d\0" % (file, line)).encode() + text + b"\0")
         cache_path = cache_path.replace(".jsonl", "-%s.jsonl" % digest.hexdigest()[:12])
     by_file = {}
@@ -135,7 +172,11 @@ def run_deep(additions, cache_path=None, log=None, shard=None):
         stem = cache_path[:-len(".jsonl")]
         for path in sorted(glob.glob(glob.escape(stem) + "*.jsonl")):
             with open(path, encoding="utf-8") as handle:
-                for record in map(json.loads, filter(None, map(str.strip, handle))):
+                for line in handle:
+                    try:
+                        record = json.loads(line)
+                    except ValueError:
+                        continue  # the write that was interrupted
                     done[record["file"]] = record["findings"]
         if shard:
             own = "%s-shard%d.jsonl" % (stem, shard[0])
@@ -143,6 +184,11 @@ def run_deep(additions, cache_path=None, log=None, shard=None):
     total_bytes = sum(len(t) + 1 for _, _, t in additions)
     started, seen = time.time(), 0
     out = open(own, "a", encoding="utf-8") if own else None
+    if out and os.path.getsize(own):
+        with open(own, "rb") as existing:
+            existing.seek(-1, os.SEEK_END)
+            if existing.read(1) != b"\n":
+                out.write("\n")  # an interrupted write left a partial record; start a fresh line
     try:
         for index, (file, items) in enumerate(sorted(by_file.items())):
             size = sum(len(t) + 1 for _, _, t in items)

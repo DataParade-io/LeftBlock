@@ -103,6 +103,31 @@ stub detector, and `context.results` holds the parsed results JSON.
   `the generated corpus had more than {n} labelled lines`,
   `the generated corpus left no files behind`, `the report reveals no generated value`
 
+### Running it from a fresh clone (same module)
+
+`python -m eval check|reproduce|compare` run as subprocesses; the fixture
+carries the completion marker `fetch` writes, so no scenario touches the
+network.
+
+- `gitleaks is not installed` (PATH holds only git), `gitleaks at the pinned version`,
+  `gitleaks reporting version {v}` (a wrapper that reports `v` and runs the real
+  gitleaks otherwise), `the fixture download did not finish`,
+  `the model is interrupted after {n} calls` (stub raises on the next call)
+- `I check the evaluation prerequisites with|without the deep scan`,
+  `I reproduce the evaluation without the deep scan`,
+  `... with a deep smoke run on {n} files`,
+  `the interruption is over and I reproduce again`,
+  `I evaluate the fixture with detectors "{names}" and no mismatch allowance`
+  (other evaluate steps pass `--allow-gitleaks-mismatch`, so they run with any local gitleaks)
+- `I compare the results with themselves`, `... with a copy whose LeftBlock recall and
+  gitleaks version are changed`, `I compare two results files that do not exist`
+- `the exit code is not 0`, `no results were written`,
+  `the results record ...` (gitleaks version and pin, CredData commit and digests, tier
+  and ruleset digests, seed and sample, model revision), `the report lists these inputs in a
+  provenance section`, `the reproduced results hold both datasets`,
+  `the reproduced deep sample reads {n} files and is marked as a smoke run`,
+  `the model was consulted for {n} more calls`
+
 ## Synthetic kinds
 
 Used as `a synthetic <kind>`. The content shown is what ends up in the file.

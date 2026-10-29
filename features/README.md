@@ -69,3 +69,8 @@ authors are in [steps/README.md](steps/README.md).
     values and paths, and a data directory that must sit outside any Git
     repository. The specs build a tiny CredData-shaped dataset at run time and
     swap the model for the stub detector.
+    The same chapter specs running it from a fresh clone: the prerequisite
+    check and its fixes, the pinned gitleaks (another version is refused
+    or, if allowed, warned about and recorded), every input recorded in the
+    results, `reproduce` with its resumable deep scan and smoke runs, and
+    `compare`.
