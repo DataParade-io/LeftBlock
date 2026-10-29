@@ -4,6 +4,8 @@
 
 LeftBlock **shifts privacy checks left**: detected sensitive material can be blocked before it enters a commit and becomes part of local Git history. Pushing distributes that history to a remote; subsequent clones and pulls distribute it further. A later check can stop the next step, but cannot undo copies already made.
 
+LeftBlock pairs gitleaks rules in the commit hook with an optional deep scan that uses OpenAI's open-weight [Privacy Filter](https://huggingface.co/openai/privacy-filter) model (Apache-2.0). The model runs locally on CPU and nothing leaves the machine. It reads text rather than matching patterns, so it can flag unformatted secrets such as passwords and authorization headers that regex rules miss; [how much it adds is measured below](#how-well-does-it-work).
+
 ```mermaid
 flowchart LR
     Work["Working tree / staged changes"] --> Check{"Pre-commit hook<br/>gitleaks + LeftBlock rules"}
@@ -17,7 +19,7 @@ flowchart LR
     Remote -->|Clone / pull| Copies["Downstream copies"]
     Work -.->|"Hook bypass (--no-verify)"| History
     Check -.->|"Receipt mode: interactive approval"| History
-    History -.->|"Optional, not in the hook"| Later["Later checks<br/>pre-push / CI / receipt verification<br/>optional: leftblock deep-scan (model-based)"]
+    History -.->|"Optional, not in the hook"| Later["Later checks<br/>pre-push / CI / receipt verification<br/>optional: leftblock deep-scan<br/>(OpenAI Privacy Filter)"]
     Remote -.-> Later
     Later --> Limit["May stop further distribution or deployment<br/>Material is already in history"]
 
@@ -359,7 +361,8 @@ the receipts required by this gate.
 
 Pattern rules cannot see everything. `leftblock deep-scan` adds a second,
 model-based opinion using OpenAI's [Privacy Filter](https://huggingface.co/openai/privacy-filter)
-(Apache-2.0), a token-classification model run through the Hugging Face
+(Apache-2.0; [model card and paper, arXiv 2608.18274](https://arxiv.org/abs/2608.18274);
+[code on GitHub](https://github.com/openai/privacy-filter)), a token-classification model run through the Hugging Face
 `transformers` pipeline on CPU. It is opt-in and **never part of the commit
 hook**, which stays on gitleaks only.
 
@@ -526,15 +529,15 @@ We measure it. The evaluation harness in [`eval/`](eval/README.md) scores four d
 | (a) stock gitleaks, all labelled lines | 45.8% (45.1-46.6) | 86.3% (85.5-87.0) | 29.8% (28.7-31.0) |
 | (b) gitleaks, LeftBlock rules, all labelled lines | 60.2% (59.5-61.0) | 75.0% (74.2-75.8) | 31.6% (30.4-32.8) |
 | (b) on the deep-scan sample | 57.7% (53.1-62.1) | 74.3% (68.6-79.3) | 31.6% (30.4-32.8) |
-| (c) deep scan, same sample | 65.7% (61.2-69.9) | 91.8% (88.6-94.2) | 83.8% (82.9-84.7) |
-| (d) LeftBlock + deep scan, same sample | 88.2% (84.9-90.8) | 78.4% (74.4-82.0) | 85.8% (84.9-86.7) |
+| (c) deep scan (OpenAI Privacy Filter), same sample | 65.7% (61.2-69.9) | 91.8% (88.6-94.2) | 83.8% (82.9-84.7) |
+| (d) LeftBlock rules + deep scan (Privacy Filter), same sample | 88.2% (84.9-90.8) | 78.4% (74.4-82.0) | 85.8% (84.9-86.7) |
 
 | Generated provider keys | Recall | Precision |
 |---|---|---|
 | (a) stock gitleaks | 66.4% | 98.2% |
 | (b) gitleaks, LeftBlock rules | 96.1% | 93.3% |
-| (c) deep scan | 77.5% | 92.4% |
-| (d) combined | 99.3% | 91.6% |
+| (c) deep scan (Privacy Filter) | 77.5% | 92.4% |
+| (d) rules + deep scan | 99.3% | 91.6% |
 
 Read these with care. The "critical tier" is passwords, cloud and provider keys, private keys and auth headers; precision is measured on lines CredData labelled, which are hard negatives, so it is not a false-alarm rate; the model may have seen CredData in training. [`eval/README.md`](eval/README.md) explains the method, the caveats and how to read every number, and gives one command to reproduce all of it:
 
