@@ -8,6 +8,29 @@ remain unchanged; commit links retain their original hashes.
 
 <!-- version list -->
 
+## v0.8.1 (2026-10-29)
+
+### Bug Fixes
+
+- **allow**: Identify overrides by the matched value, not the whole line
+  ([`0ffde9d`](https://github.com/DataParade-io/LeftBlock/commit/0ffde9d25915839a3bf7ae76d7a099fffdd885db))
+
+Finding ids now hash the rule, the file and the matched text, so unrelated edits to the rest of a
+  line (a minified file gaining a class name) no longer re-block a reviewed false alarm. Changing
+  the matched value still does. Gitleaks runs with --redact, so the value is sliced from the staged
+  line by its reported columns (corrected for gitleaks' one-column shift on later lines of a hunk);
+  only the hash is stored. Entries with the older line-based ids are still honoured, for gitleaks
+  findings and deep-scan findings alike.
+
+- **rules**: Verify the base58check checksum of leftblock-wif-key matches
+  ([`ed4f5f7`](https://github.com/DataParade-io/LeftBlock/commit/ed4f5f7684164ff5f4cf371428d219b99d269c5a))
+
+The WIF rule was only a regex, so random base64 inside vendored fonts and images matched by
+  coincidence. A post-filter now base58-decodes the match and requires version 0x80 or 0xEF, a
+  32-byte key with an optional 0x01 flag and a valid double-SHA-256 checksum; failures are dropped
+  before ids and allowlisting. Specs generate valid WIFs at run time.
+
+
 ## v0.8.0 (2026-10-29)
 
 ### Documentation
