@@ -122,9 +122,19 @@ class ScanTests(unittest.TestCase):
     def test_id_matches_the_allow_file_hash(self):
         line = "t = value"
         found = self.scan([("a.py", 3, line)], lambda text: [(0, 1, "secret", 0.99)])
-        digest = hashlib.sha256(("privacy-filter-secret\0a.py\0" + line).encode()).hexdigest()[:16]
+        digest = hashlib.sha256(b"privacy-filter-secret\0a.py\0t").hexdigest()[:16]
         self.assertEqual(found[0]["id"], digest)
-        self.assertEqual(found[0]["id"], allow.content_id("privacy-filter-secret", "a.py", line))
+        legacy = hashlib.sha256(("privacy-filter-secret\0a.py\0" + line).encode()).hexdigest()[:16]
+        self.assertEqual(found[0]["legacy_id"], legacy)
+
+    def test_id_ignores_unrelated_edits_to_the_line(self):
+        def detect(text):
+            at = text.find("TOKEN123")
+            return [(at, at + 8, "secret", 0.99)]
+        first = self.scan([("a.py", 3, "a = TOKEN123")], detect)
+        second = self.scan([("a.py", 9, "other words TOKEN123 more")], detect)
+        self.assertEqual(first[0]["id"], second[0]["id"])
+        self.assertNotEqual(first[0]["legacy_id"], second[0]["legacy_id"])
 
     def test_threshold_labels_and_filters(self):
         add = [("a.py", 1, "value")]

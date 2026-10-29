@@ -241,9 +241,16 @@ allow:
 - **Category for reviewers.** `kind` is the rule's description, written so a
   reviewer of the pull request sees what kind of finding was approved. It is
   informational: it is not part of matching and may be omitted.
-- **Scoped to line content.** The id hashes the rule, the file, and the exact
-  staged content of the flagged lines. Editing that line, or adding another
-  finding anywhere, blocks again.
+- **Scoped to the matched value.** The id hashes the rule, the file, and the
+  exact text the rule matched (never the whole line). Changing the matched
+  value, or adding another finding anywhere, blocks again; unrelated edits to
+  the rest of the line (a minified file that gains a class name, say) do not.
+  The same value flagged by the same rule on several lines of one file is one
+  reviewed value, so one entry covers all of those lines.
+- **Older entries still work.** Entries recorded by earlier versions hash the
+  whole line. A finding is allowed if either its value-based id or that
+  line-based id is in the file, so existing `.leftblock-allow.yml` files need
+  no change. `allow` and the check output always use the value-based id.
 - **Staged to count.** Only the version of `.leftblock-allow.yml` in the Git
   index is read, so the override is always part of the commit and its review.
   A file that is only in the working tree has no effect.
@@ -402,7 +409,9 @@ leftblock allow --deep ID --reason "Why this is not sensitive"
 ```
 
 (`allow --deep` takes the same `--labels` and `--threshold` as the scan that
-printed the id.) In `--range` mode the committed `.leftblock-allow.yml` is
+printed the id.) As for gitleaks findings, the id hashes the rule, the file and
+the span the model flagged, so unrelated edits to the line keep the override;
+entries with the older whole-line ids still apply. In `--range` mode the committed `.leftblock-allow.yml` is
 honoured the same way. Range mode reads each non-merge commit's own additions,
 so a secret added and removed inside the range is still reported; the line
 number is the one in that commit.
@@ -460,7 +469,7 @@ PEM private keys, and other standard secret formats.
 | `leftblock-pinecone-key` | Pinecone `pcsk_` API keys, detected without any surrounding keyword |
 | `leftblock-ai-provider-key-assignment` | Prefix-less AI provider keys (Mistral, Cohere, Azure OpenAI, Deepgram, legacy Together AI hex) assigned to a variable, key or field named after the provider and ending in key/token/secret (env, YAML, JSON, TOML and code styles). Bare prefix-less keys cannot be told apart from hashes and identifiers, so they are not detected without that naming context |
 | `leftblock-eth-private-key` | Ethereum-style private keys (`0x` + 64 hex) |
-| `leftblock-wif-key` | Bitcoin WIF private keys (compressed `K/L/M…`, uncompressed `5…`) |
+| `leftblock-wif-key` | Bitcoin WIF private keys (compressed `K/L/M…`, uncompressed `5…`), confirmed by their base58check checksum and layout so random look-alike runs (inside a base64 font, say) are not flagged |
 | `leftblock-bip39-mnemonic` | BIP-39 seed phrases (12–24 words) in seed/mnemonic/recovery context |
 
 A blocked check prints a one-line hint after each rule's findings (once per
@@ -482,7 +491,7 @@ in any other path is still flagged.
 
 ### Crypto wallet material: what is and is not flagged
 
-- **Flagged:** `0x`-prefixed 64-hex private keys, WIF-format Bitcoin keys,
+- **Flagged:** `0x`-prefixed 64-hex private keys, WIF-format Bitcoin keys (checksum verified),
   and 12/15/18/21/24-word BIP-39 seed phrases when they appear in
   seed/mnemonic context (`seed_phrase = "..."`, `recovery mnemonic: ...`).
 - **Not flagged on their own:** public wallet addresses (Ethereum `0x` + 40

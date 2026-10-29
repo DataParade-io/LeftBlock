@@ -8,7 +8,7 @@ from behave import given
 
 import world
 from synthetic_data import (
-    BASE58, HEX, URLSAFE, WORDS, generator, token,
+    ALNUM, BASE58, HEX, URLSAFE, WORDS, bad_checksum, generator, token, wif,
 )
 
 
@@ -41,8 +41,24 @@ def _google_key(rng):
 
 @generator("uncompressed WIF key")
 def _uncompressed_wif(rng):
-    value = "5" + token(rng, 50, BASE58)
+    value = wif(rng, compressed=False)
     return "wallet_import = %s\n" % value, [value]
+
+
+@generator("WIF-shaped string with a bad checksum")
+def _bad_wif(rng):
+    return "wallet_import = %s\n" % bad_checksum(wif(rng)), []
+
+
+@generator("minified stylesheet with a font data URI holding a WIF-shaped run")
+def _font_data_uri(rng):
+    run = bad_checksum(wif(rng))
+    base64 = token(rng, 60, ALNUM)
+    css = (
+        "@font-face{font-family:x;src:url(data:font/woff2;base64,%s/%s+%s) format(woff2)}"
+        ".card{padding:1rem}\n" % (base64, run, token(rng, 60, ALNUM))
+    )
+    return css, []
 
 
 @generator("labelled bare hex private key")

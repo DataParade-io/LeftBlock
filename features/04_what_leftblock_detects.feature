@@ -9,7 +9,10 @@ Feature: What LeftBlock detects
   on top of gitleaks' own default secret rules. Public values that merely look
   similar are left alone so the gate does not cry wolf: no-reply and
   reserved placeholder addresses, GitHub identities, public wallet addresses,
-  digests, ordinary prose and hex blobs with no key context. AI provider keys
+  digests, ordinary prose and hex blobs with no key context. A Bitcoin WIF key
+  is recognised by its shape and then confirmed by its base58check checksum
+  and layout, so a random run of look-alike characters (inside a base64 font
+  or image, say) is not flagged. AI provider keys
   have their own chapter; Kanbus board data has another.
 
   Scenario Outline: A staged <kind> is blocked by its rule
@@ -142,6 +145,26 @@ Feature: What LeftBlock detects
       """
     When I commit the staged files
     Then the commit succeeds
+
+  Scenario: A WIF-shaped string whose checksum does not verify is not flagged
+    Given a repository with LeftBlock installed as a local check-only gate
+    And a staged file "wallet.txt" containing a synthetic WIF-shaped string with a bad checksum
+    When I commit the staged files
+    Then the commit succeeds
+
+  Scenario: A WIF-shaped run inside a base64 font in minified CSS is not flagged
+    Given a repository with LeftBlock installed as a local check-only gate
+    And a staged file "vendor.css" containing a synthetic minified stylesheet with a font data URI holding a WIF-shaped run
+    When I commit the staged files
+    Then the commit succeeds
+
+  Scenario: A valid compressed WIF key is flagged by its rule
+    Given a repository with LeftBlock installed as a local check-only gate
+    And a staged file "wallet.txt" containing a synthetic Bitcoin WIF key
+    When I run "leftblock check"
+    Then the exit code is 1
+    And stderr contains "leftblock-wif-key"
+    And the output does not reveal the synthetic value
 
   Scenario: Public wallet addresses and digests are not flagged
     Given a repository with LeftBlock installed as a local check-only gate

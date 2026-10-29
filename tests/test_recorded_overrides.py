@@ -236,13 +236,45 @@ class RecordedOverrideTests(RepositoryFixture):
         self.assertEqual(len(self.ids(proc)), 1)
         self.assertNotIn(ident, self.ids(proc))
 
-    def test_changed_allowed_line_reblocks(self):
+    def test_unrelated_edit_to_allowed_line_stays_allowed(self):
         ident = self.blocked_id()
         self.assertEqual(self.allow(ident).returncode, 0)
-        self.write_stage(f"a\nWrite to: {EMAIL}\n")
+        self.write_stage(f"a\nWrite to: {EMAIL} (public role address)\n")
+        proc = self.check()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(ident, proc.stderr)
+
+    def test_changed_allowed_value_reblocks(self):
+        ident = self.blocked_id()
+        self.assertEqual(self.allow(ident).returncode, 0)
+        self.write_stage(f"a\nContact: {OTHER_EMAIL}\n")
         proc = self.check()
         self.assertNotEqual(proc.returncode, 0)
         self.assertNotIn(ident, self.ids(proc))
+
+    def test_same_value_on_two_lines_is_one_override(self):
+        self.write_stage(f"Contact: {EMAIL}\nAgain: {EMAIL}\n")
+        ids = self.ids(self.check())
+        self.assertEqual(len(ids), 2)
+        self.assertEqual(len(set(ids)), 1)
+        self.assertEqual(self.allow(ids[0]).returncode, 0)
+        self.assertEqual(self.check().returncode, 0)
+
+    def test_legacy_line_based_id_still_allows_an_unchanged_line(self):
+        line = f"Contact: {EMAIL}"
+        self.blocked_id(f"a\n{line}\n")
+        legacy = hashlib.sha256(f"leftblock-personal-email\0{PAGE}\0{line}".encode()).hexdigest()[:16]
+        (self.repo / ".leftblock-allow.yml").write_text(
+            'version: 1\nallow:\n  - id: "%s"\n    rule: "leftblock-personal-email"\n'
+            '    file: "%s"\n    reason: "Public role address for the site"\n' % (legacy, PAGE)
+        )
+        self.git("add", ".leftblock-allow.yml", check=True)
+        proc = self.check()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(legacy, proc.stderr)
+        # A legacy entry still re-blocks when the line changes.
+        self.write_stage(f"a\nWrite to: {EMAIL}\n")
+        self.assertNotEqual(self.check().returncode, 0)
 
     def test_line_numbers_inside_modified_committed_file(self):
         self.write_stage("one\ntwo\nthree\n")

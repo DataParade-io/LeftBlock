@@ -274,13 +274,54 @@ Feature: Deep scan
     And stderr contains "Override applied"
     And stderr contains "privacy-filter-secret"
 
-  Scenario: Changing the approved line blocks it again
+  Scenario: Unrelated edits to an approved line keep it approved
     Given a repository without LeftBlock
     And the deep scan model is replaced by a stub detector
     And a staged file "settings.cfg" containing a credential-shaped value that the model flags as secret at 0.97
     When I note the finding ids from a deep scan
     And I record a deep scan override for the noted findings because "Public build token for the sandbox"
     And the flagged line in "settings.cfg" is reworded and staged
+    And I run "leftblock deep-scan"
+    Then the exit code is 0
+    And stderr contains "Override applied"
+
+  Scenario: Changing the approved value blocks it again
+    Given a repository without LeftBlock
+    And the deep scan model is replaced by a stub detector
+    And a staged file "settings.cfg" containing a credential-shaped value that the model flags as secret at 0.97
+    When I note the finding ids from a deep scan
+    And I record a deep scan override for the noted findings because "Public build token for the sandbox"
+    And the flagged value in "settings.cfg" is replaced by another that the model flags and staged
+    And I run "leftblock deep-scan"
+    Then the exit code is 1
+
+  Scenario: One override covers the same value on two lines
+    Given a repository without LeftBlock
+    And the deep scan model is replaced by a stub detector
+    And a staged file "settings.cfg" containing a credential-shaped value that the model flags as secret at 0.97
+    And the flagged value in "settings.cfg" is repeated on another line and staged
+    When I note the finding ids from a deep scan
+    And I record a deep scan override for the noted findings because "Public build token for the sandbox"
+    Then the staged allow file records 1 override
+    When I run "leftblock deep-scan"
+    Then the exit code is 0
+
+  Scenario: An entry recorded by an earlier version still allows an unchanged line
+    Given a repository without LeftBlock
+    And the deep scan model is replaced by a stub detector
+    And a staged file "settings.cfg" containing a credential-shaped value that the model flags as secret at 0.97
+    And I replace the staged allow file with a line-based entry for rule "privacy-filter-secret" on the flagged line of "settings.cfg"
+    When I run "leftblock deep-scan"
+    Then the exit code is 0
+    And no finding is reported
+    And stderr contains "Override applied"
+
+  Scenario: An entry recorded by an earlier version blocks again when its line changes
+    Given a repository without LeftBlock
+    And the deep scan model is replaced by a stub detector
+    And a staged file "settings.cfg" containing a credential-shaped value that the model flags as secret at 0.97
+    And I replace the staged allow file with a line-based entry for rule "privacy-filter-secret" on the flagged line of "settings.cfg"
+    When the flagged line in "settings.cfg" is reworded and staged
     And I run "leftblock deep-scan"
     Then the exit code is 1
 

@@ -128,15 +128,17 @@ def run_command_checker(checker: Dict[str, Any], cwd: str = None, env: Dict[str,
                     raise ValueError("Invalid report")
                 # Never carry matched values, source lines or raw logs into the UI.
                 # Files, rule identifiers, the rule's own description (ruleset text,
-                # not data) and line numbers are the diagnostic boundary. Line
-                # numbers become the override id and a displayed `line`
-                # (see leftblock.allow.attach_ids).
+                # not data), and line and column positions are the diagnostic
+                # boundary. Gitleaks runs with --redact, so the matched value is
+                # re-read from the staged line by position only to compute the
+                # override id and to validate checksummed formats
+                # (see leftblock.validators and leftblock.allow.attach_ids).
                 findings = []
                 for item in report:
                     finding = {key: item[key] for key in ("File", "RuleID") if isinstance(item.get(key), str)}
                     if isinstance(item.get("Description"), str) and item["Description"].strip():
                         finding["description"] = item["Description"]
-                    for key in ("StartLine", "EndLine"):
+                    for key in ("StartLine", "EndLine", "StartColumn", "EndColumn"):
                         if type(item.get(key)) is int:
                             finding[key] = item[key]
                     findings.append(finding)
