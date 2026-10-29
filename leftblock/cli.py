@@ -16,6 +16,7 @@ from leftblock.merge import (
 from leftblock import allow as allowlist
 from leftblock import bypass
 from leftblock import deep
+from leftblock import validators
 from leftblock.core import (
     get_secret, compute_hmac, get_tree_hash, get_commit_tree_hash,
     load_config, validate_checkers, execute_checkers, get_trailer, run_cmd, SECRET_FILE_DEFAULT,
@@ -142,6 +143,7 @@ def run_checks(repo_root, config_path=None, overrides=True):
     each override that took effect. Prints nothing.
     """
     config, results = _run_configured_checks(repo_root, config_path)
+    validators.check_findings(repo_root, results)
     allowlist.attach_ids(repo_root, results)
     applied = []
     if not overrides:
