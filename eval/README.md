@@ -82,10 +82,28 @@ digest) that differs, side by side. It is informational and always exits 0. With
 pinned inputs, the gitleaks numbers should match the committed file; deep-scan numbers can
 move a little (see [caveats](#caveats)).
 
-Clean up when you are done: delete the data directory and the virtual environment, and, if
-you ran the deep scan, the model: `~/.cache/huggingface/hub/models--openai--privacy-filter`
-(newer Hugging Face caches keep the weights in `~/.cache/huggingface/hub/blobs/`; the model
-directory's `refs` and `snapshots` entries name the blob).
+Clean up when you are done: delete the data directory and the virtual environment. If you
+ran the deep scan, also delete the model (about 2.8 GB). Recent Hugging Face caches store
+the weights as a blob under `~/.cache/huggingface/hub/blobs/<xx>/` that the model directory
+only links to, so removing the model directory alone leaves the big file behind. This
+removes both, touching only blobs that belong to this model:
+
+```bash
+python - <<'EOF'
+import glob, os, shutil
+model = os.path.expanduser("~/.cache/huggingface/hub/models--openai--privacy-filter")
+for link in glob.glob(os.path.join(model, "blobs", "*")):
+    if os.path.islink(link):
+        blob = os.path.realpath(link)
+        refs = blob + ".refs"
+        if os.path.exists(refs) and "privacy-filter" not in open(refs).read():
+            continue  # shared with another model: leave it
+        for path in (blob, refs, blob + ".lock"):
+            if os.path.exists(path):
+                os.remove(path)
+shutil.rmtree(model, ignore_errors=True)
+EOF
+```
 
 ## Prerequisites
 
