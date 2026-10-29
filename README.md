@@ -6,21 +6,28 @@ LeftBlock **shifts privacy checks left**: detected sensitive material can be blo
 
 ```mermaid
 flowchart LR
-    Work["Working tree / staged changes"] --> Check{"Pre-commit check<br/>LeftBlock + Gitleaks"}
-    Check -->|Detected sensitive material| Block["Commit blocked<br/>Fix staged changes"]
+    Work["Working tree / staged changes"] --> Check{"Pre-commit hook<br/>gitleaks + LeftBlock rules"}
+    Check -->|"Finding: commit BLOCKED"| Block["Fix the staged change<br/>or record an override"]
     Block --> Work
-    Check -->|Checks pass| History["Local Git history<br/>Commit and provenance"]
+    Allow["Recorded override<br/>reasoned entry in committed<br/>.leftblock-allow.yml,<br/>reviewed with the change"]
+    Block -->|"Everyday way past a false alarm"| Allow
+    Allow -->|"Entry staged with the change"| Check
+    Check -->|"No finding: commit allowed"| History["Local Git history<br/>Commit and provenance"]
     History -->|Push| Remote["Remote repository"]
     Remote -->|Clone / pull| Copies["Downstream copies"]
-    Work -.->|Hook bypass| History
-    Check -.->|Receipt mode approved override| History
-    History -.-> Later["Later checks<br/>Pre-push / CI / receipt verification"]
+    Work -.->|"Hook bypass (--no-verify)"| History
+    Check -.->|"Receipt mode: interactive approval"| History
+    History -.->|"Optional, not in the hook"| Later["Later checks<br/>pre-push / CI / receipt verification<br/>optional: leftblock deep-scan (model-based)"]
     Remote -.-> Later
     Later --> Limit["May stop further distribution or deployment<br/>Material is already in history"]
 
-    style Block fill:#ffe4e4,stroke:#b42318
-    style Check fill:#e5f3ff,stroke:#175cd3
+    style Block stroke-width:3px
+    style Check stroke-width:3px
+    style Allow stroke-dasharray:6 3
+    style Later stroke-dasharray:3 3
 ```
+
+Solid arrows are the normal path; dashed arrows are bypasses and later, optional layers. The commit hook runs gitleaks with LeftBlock's rules; the model-based [`leftblock deep-scan`](#deep-scan-optional) is not in the hook and runs later, in CI or before a push. Later layers can stop the next step, but cannot undo copies already made.
 
 Local check-only mode installs a Git **`pre-commit` hook**. Receipt mode installs a **`commit-msg` hook**, which runs later but still before Git creates the commit object. The local hook offers no interactive override and adds no receipt; a false alarm can be handled only by a recorded, reasoned override that is committed and reviewable (see [Overriding a false alarm](#overriding-a-false-alarm)). The default Gitleaks command scans the staged diff, not every working-tree file or all existing history. Staging may already write blobs to the local object database, so blocking a commit does not erase every local copy.
 
@@ -32,8 +39,7 @@ This is a layered defense, not a guarantee that a repository contains no sensiti
 
 ## Project and release status
 
-LeftBlock has been donated to **Data Parade (`DataParade-io`)**, alongside
-BotSpy. Its repository is
+The repository is
 [DataParade-io/LeftBlock](https://github.com/DataParade-io/LeftBlock).
 
 LeftBlock is published on PyPI as `leftblock`. The current source uses `leftblock` as its

@@ -22,6 +22,22 @@ def flatten(node, prefix=()):
         yield prefix, node
 
 
+def windows_comparable(a, b, dataset):
+    """False when the two deep-scan samples differ (a smoke run, another size or seed): those numbers are not comparable."""
+    def sample(results):
+        return (results.get("datasets", {}).get(dataset, {}).get("windows") or {}).get("sample")
+    sa, sb = sample(a), sample(b)
+    if not sa or not sb:
+        return True
+    return sa.get("sha256") == sb.get("sha256") and not sa.get("smoke_files") and not sb.get("smoke_files")
+
+
+def without_windows(results, dataset):
+    clone = json.loads(json.dumps(results))
+    clone.get("datasets", {}).get(dataset, {}).pop("windows", None)
+    return clone
+
+
 def headline(results):
     """``{(dataset, scope, detector, tier): (recall, precision)}`` for the headline numbers."""
     rows = {}
@@ -54,7 +70,13 @@ def provenance_diff(a, b):
 
 
 def render(a, b, name_a="A", name_b="B"):
+    notes = []
+    for dataset in sorted(set(a.get("datasets", {})) & set(b.get("datasets", {}))):
+        if not windows_comparable(a, b, dataset):
+            a, b = without_windows(a, dataset), without_windows(b, dataset)
+            notes.append("%s: the deep-scan samples differ (a smoke run, or another size or seed), so the sample (`windows`) numbers are not compared." % dataset)
     out = ["# Results comparison", "", "A = %s, B = %s. Differences only; nothing here is a pass or fail." % (name_a, name_b), ""]
+    out += [n + "\n" for n in notes]
     ha, hb = headline(a), headline(b)
     out += ["## Headline recall / precision", "", "| dataset | scope | detector | tier | A recall | B recall | A precision | B precision |", "|---|---|---|---|---|---|---|---|"]
     shown = 0

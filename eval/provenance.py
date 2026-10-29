@@ -126,10 +126,10 @@ def deep_scan_settings(detector_names_used, torch_threads=None):
 
 
 def torch_threads():
-    if "torch" not in sys.modules:
-        return None
+    """CPU threads torch will use, or None when torch is not installed."""
     try:
-        return sys.modules["torch"].get_num_threads()
+        import torch
+        return torch.get_num_threads()
     except Exception:
         return None
 
@@ -141,12 +141,13 @@ def collect(leftblock_version, gitleaks, arguments, deep_used):
     run settings that change the numbers (never a path).
     """
     state = git_state()
+    threads = torch_threads() if deep_used and not os.environ.get("LEFTBLOCK_DEEP_DETECTOR") else None
     return {
         "schema": SCHEMA,
         "leftblock": {"version": leftblock_version, "git_sha": state["sha"], "git_dirty": state["dirty"]},
         "gitleaks": gitleaks,
         "eval": {"tiers_sha256": tiers_sha256(), "ruleset_sha256": ruleset_sha256()},
-        "deep_scan": deep_scan_settings(deep_used, torch_threads()),
+        "deep_scan": deep_scan_settings(deep_used, threads),
         "arguments": arguments,
         "environment": environment(),
     }

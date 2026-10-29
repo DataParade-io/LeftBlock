@@ -147,6 +147,16 @@ class CompareTests(unittest.TestCase):
         self.assertIn("60.0%", text)
         self.assertIn("gitleaks.version", text)
 
+    def test_smoke_samples_are_not_compared(self):
+        def with_sample(results, smoke):
+            rate = {"value": 0.5, "lo": 0.0, "hi": 1.0, "n": 1}
+            entry = {"overall": {"recall": rate, "precision": rate}, "critical": {"recall": rate, "precision": rate}}
+            results["datasets"]["d"]["windows"] = {"detectors": {"deep-scan": entry}, "sample": {"sha256": "x", "smoke_files": smoke}}
+            return results
+        text = compare.render(with_sample(self.results(0.5), None), with_sample(self.results(0.5), 40))
+        self.assertIn("not compared", text)
+        self.assertNotIn("| d | windows |", text)
+
     def test_timings_are_ignored(self):
         other = self.results(0.5)
         other["datasets"]["d"]["seconds_total"] = 999
