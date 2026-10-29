@@ -4,23 +4,32 @@
 
 LeftBlock **shifts privacy checks left**: detected sensitive material can be blocked before it enters a commit and becomes part of local Git history. Pushing distributes that history to a remote; subsequent clones and pulls distribute it further. A later check can stop the next step, but cannot undo copies already made.
 
+LeftBlock pairs gitleaks rules in the commit hook with an optional deep scan that uses OpenAI's open-weight [Privacy Filter](https://huggingface.co/openai/privacy-filter) model (Apache-2.0). The model runs locally on CPU and nothing leaves the machine. It reads text rather than matching patterns, so it can flag unformatted secrets such as passwords and authorization headers that regex rules miss; [how much it adds is measured below](#how-well-does-it-work).
+
 ```mermaid
 flowchart LR
-    Work["Working tree / staged changes"] --> Check{"Pre-commit check<br/>LeftBlock + Gitleaks"}
-    Check -->|Detected sensitive material| Block["Commit blocked<br/>Fix staged changes"]
+    Work["Working tree / staged changes"] --> Check{"Pre-commit hook<br/>gitleaks + LeftBlock rules"}
+    Check -->|"Finding: commit BLOCKED"| Block["Fix the staged change<br/>or record an override"]
     Block --> Work
-    Check -->|Checks pass| History["Local Git history<br/>Commit and provenance"]
+    Allow["Recorded override<br/>reasoned entry in committed<br/>.leftblock-allow.yml,<br/>reviewed with the change"]
+    Block -->|"Everyday way past a false alarm"| Allow
+    Allow -->|"Entry staged with the change"| Check
+    Check -->|"No finding: commit allowed"| History["Local Git history<br/>Commit and provenance"]
     History -->|Push| Remote["Remote repository"]
     Remote -->|Clone / pull| Copies["Downstream copies"]
-    Work -.->|Hook bypass| History
-    Check -.->|Receipt mode approved override| History
-    History -.-> Later["Later checks<br/>Pre-push / CI / receipt verification"]
+    Work -.->|"Hook bypass (--no-verify)"| History
+    Check -.->|"Receipt mode: interactive approval"| History
+    History -.->|"Optional, not in the hook"| Later["Later checks<br/>pre-push / CI / receipt verification<br/>optional: leftblock deep-scan<br/>(OpenAI Privacy Filter)"]
     Remote -.-> Later
     Later --> Limit["May stop further distribution or deployment<br/>Material is already in history"]
 
-    style Block fill:#ffe4e4,stroke:#b42318
-    style Check fill:#e5f3ff,stroke:#175cd3
+    style Block stroke-width:3px
+    style Check stroke-width:3px
+    style Allow stroke-dasharray:6 3
+    style Later stroke-dasharray:3 3
 ```
+
+Solid arrows are the normal path; dashed arrows are bypasses and later, optional layers. The commit hook runs gitleaks with LeftBlock's rules; the model-based [`leftblock deep-scan`](#deep-scan-optional) is not in the hook and runs later, in CI or before a push. Later layers can stop the next step, but cannot undo copies already made.
 
 Local check-only mode installs a Git **`pre-commit` hook**. Receipt mode installs a **`commit-msg` hook**, which runs later but still before Git creates the commit object. The local hook offers no interactive override and adds no receipt; a false alarm can be handled only by a recorded, reasoned override that is committed and reviewable (see [Overriding a false alarm](#overriding-a-false-alarm)). The default Gitleaks command scans the staged diff, not every working-tree file or all existing history. Staging may already write blobs to the local object database, so blocking a commit does not erase every local copy.
 
@@ -32,8 +41,7 @@ This is a layered defense, not a guarantee that a repository contains no sensiti
 
 ## Project and release status
 
-LeftBlock has been donated to **Data Parade (`DataParade-io`)**, alongside
-BotSpy. Its repository is
+The repository is
 [DataParade-io/LeftBlock](https://github.com/DataParade-io/LeftBlock).
 
 LeftBlock is published on PyPI as `leftblock`. The current source uses `leftblock` as its
@@ -353,7 +361,8 @@ the receipts required by this gate.
 
 Pattern rules cannot see everything. `leftblock deep-scan` adds a second,
 model-based opinion using OpenAI's [Privacy Filter](https://huggingface.co/openai/privacy-filter)
-(Apache-2.0), a token-classification model run through the Hugging Face
+(Apache-2.0; [model card and paper, arXiv 2608.18274](https://arxiv.org/abs/2608.18274);
+[code on GitHub](https://github.com/openai/privacy-filter)), a token-classification model run through the Hugging Face
 `transformers` pipeline on CPU. It is opt-in and **never part of the commit
 hook**, which stays on gitleaks only.
 
@@ -510,6 +519,31 @@ must stay allowed) and **0 findings** on a ~2 MB real repository tree
 test time from a seeded RNG — no real credential ever appears in the repo.
 
 ---
+
+## How well does it work?
+
+We measure it. The evaluation harness in [`eval/`](eval/README.md) scores four detectors on labelled data: stock gitleaks, gitleaks with LeftBlock's rules, the [deep scan](#deep-scan-optional), and the last two combined. It uses [Samsung CredData](https://github.com/Samsung/CredData) (60,820 labelled lines from 11,030 files of real open-source repositories, values obfuscated) and a seeded corpus of fake provider keys (528 lines). The 0.6.0 results, with 95% Wilson intervals:
+
+| CredData | Recall | Precision | Critical-tier recall |
+|---|---|---|---|
+| (a) stock gitleaks, all labelled lines | 45.8% (45.1-46.6) | 86.3% (85.5-87.0) | 29.8% (28.7-31.0) |
+| (b) gitleaks, LeftBlock rules, all labelled lines | 60.2% (59.5-61.0) | 75.0% (74.2-75.8) | 31.6% (30.4-32.8) |
+| (b) on the deep-scan sample | 57.7% (53.1-62.1) | 74.3% (68.6-79.3) | 31.6% (30.4-32.8) |
+| (c) deep scan (OpenAI Privacy Filter), same sample | 65.7% (61.2-69.9) | 91.8% (88.6-94.2) | 83.8% (82.9-84.7) |
+| (d) LeftBlock rules + deep scan (Privacy Filter), same sample | 88.2% (84.9-90.8) | 78.4% (74.4-82.0) | 85.8% (84.9-86.7) |
+
+| Generated provider keys | Recall | Precision |
+|---|---|---|
+| (a) stock gitleaks | 66.4% | 98.2% |
+| (b) gitleaks, LeftBlock rules | 96.1% | 93.3% |
+| (c) deep scan (Privacy Filter) | 77.5% | 92.4% |
+| (d) rules + deep scan | 99.3% | 91.6% |
+
+Read these with care. The "critical tier" is passwords, cloud and provider keys, private keys and auth headers; precision is measured on lines CredData labelled, which are hard negatives, so it is not a false-alarm rate; the model may have seen CredData in training. [`eval/README.md`](eval/README.md) explains the method, the caveats and how to read every number, and gives one command to reproduce all of it:
+
+```bash
+python -m eval reproduce --skip-deep   # gitleaks only; minutes plus a one-time CredData download (~15 GB while it runs, ~1 GB kept)
+```
 
 ## Custom Agent-Based Scanning (Tactus)
 

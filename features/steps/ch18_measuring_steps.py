@@ -21,6 +21,8 @@ import json
 import os
 import random
 import re
+import shutil
+import stat
 import sys
 import tempfile
 
@@ -87,6 +89,10 @@ def step_fixture_dataset(context):
     os.makedirs(os.path.join(clone, "meta"))
     os.makedirs(os.path.join(clone, "data", REPO))
     context.results_dir = os.path.join(context.root, "eval-results")
+    from eval import pins
+    with open(os.path.join(clone, ".leftblock-fetch-complete"), "w") as handle:
+        json.dump({"commit": pins.CREDDATA_COMMIT}, handle)
+    context.strict_gitleaks = False
     context.fixture_rows = []
     context.fixture_values = []
     context.fixture_paths = []
@@ -149,9 +155,13 @@ def _evaluate(context, dataset, names, sample=100, data_dir=None):
         sys.executable, "-m", "eval", "run", "--dataset", dataset, "--detectors", names,
         "--data-dir", data_dir or context.eval_root, "--results-dir", context.results_dir,
         "--deep-sample", str(sample),
-    ], cwd=context.root)
+    ] + ([] if getattr(context, "strict_gitleaks", False) else ["--allow-gitleaks-mismatch"]), cwd=context.root)
+    _load_results(context, context.results_dir)
+
+
+def _load_results(context, directory):
     context.results = None
-    for path in glob.glob(os.path.join(context.results_dir, "*.json")):
+    for path in sorted(glob.glob(os.path.join(directory, "*.json"))):
         with open(path) as handle:
             context.results = json.load(handle)
         context.report_json = path
@@ -316,3 +326,227 @@ def step_no_generated_values(context):
     assert len(long_tokens) > 100
     leaked = [t for t in long_tokens if t in text]
     assert not leaked, "%d generated tokens appear in the report" % len(leaked)
+
+
+# --- Running it from a fresh clone ---------------------------------------------------
+
+PINNED = "8.30.1"
+
+
+def _bin_dir(context):
+    path = os.path.join(context.root, "stub-bin")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _only_git_on_path(context):
+    bin_dir = _bin_dir(context)
+    if not os.path.exists(os.path.join(bin_dir, "git")):
+        os.symlink(shutil.which("git"), os.path.join(bin_dir, "git"))
+    return bin_dir
+
+
+def _gitleaks_wrapper(context, version):
+    """A ``gitleaks`` that reports ``version`` and otherwise runs the real one (if any)."""
+    real = shutil.which("gitleaks") or "/bin/false"
+    path = os.path.join(_bin_dir(context), "gitleaks")
+    with open(path, "w") as handle:
+        handle.write('#!/bin/sh\nif [ "$1" = "version" ]; then echo %s; exit 0; fi\nexec "%s" "$@"\n' % (version, real))
+    os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR)
+    context.env["PATH"] = _bin_dir(context) + os.pathsep + context.env["PATH"]
+
+
+@given("gitleaks is not installed")
+def step_no_gitleaks(context):
+    context.env["PATH"] = _only_git_on_path(context)
+
+
+@given("gitleaks at the pinned version")
+def step_pinned_gitleaks(context):
+    _gitleaks_wrapper(context, PINNED)
+
+
+@given("gitleaks reporting version {version}")
+def step_other_gitleaks(context, version):
+    _gitleaks_wrapper(context, version)
+
+
+@given("the fixture download did not finish")
+def step_unfinished_download(context):
+    os.remove(os.path.join(context.eval_root, "CredData", ".leftblock-fetch-complete"))
+
+
+@given("the model is interrupted after {count:d} calls")
+def step_interrupted(context, count):
+    context.stub_log = os.path.join(context.root, "stub-calls.log")
+    context.interrupt_after = count
+
+
+def _eval(context, *args):
+    _stub_environment(context)
+    if getattr(context, "stub_log", None):
+        context.env["LEFTBLOCK_STUB_LOG"] = context.stub_log
+    context.result = world.run(context, [sys.executable, "-m", "eval"] + list(args), cwd=PROJECT_ROOT)
+
+
+def _calls(context):
+    log = getattr(context, "stub_log", None)
+    return len(open(log).read().split()) if log and os.path.exists(log) else 0
+
+
+@when("I check the evaluation prerequisites without the deep scan")
+def step_check_shallow(context):
+    _eval(context, "check", "--skip-deep", "--data-dir", context.eval_root)
+
+
+@when("I check the evaluation prerequisites with the deep scan")
+def step_check_deep(context):
+    _eval(context, "check", "--data-dir", context.eval_root)
+
+
+@when('I evaluate the fixture with detectors "{names}" and no mismatch allowance')
+def step_evaluate_strict(context, names):
+    context.strict_gitleaks = True
+    _evaluate(context, "creddata", names)
+
+
+def _reproduce(context, *extra):
+    context.reproduced_dir = os.path.join(context.eval_root, "results")
+    if getattr(context, "interrupt_after", None) is not None and not getattr(context, "interruption_over", False):
+        context.env["LEFTBLOCK_STUB_FAIL_AFTER"] = str(context.interrupt_after)
+    else:
+        context.env.pop("LEFTBLOCK_STUB_FAIL_AFTER", None)
+    _eval(context, "reproduce", "--data-dir", context.eval_root, "--allow-gitleaks-mismatch", *extra)
+    _load_results(context, context.reproduced_dir)
+
+
+@when("I reproduce the evaluation without the deep scan")
+def step_reproduce_shallow(context):
+    _reproduce(context, "--skip-deep")
+
+
+@when("I reproduce the evaluation with a deep smoke run on {count:d} files")
+def step_reproduce_smoke(context, count):
+    _reproduce(context, "--deep-smoke-files", str(count))
+
+
+@when("the interruption is over and I reproduce again")
+def step_reproduce_again(context):
+    context.calls_before = _calls(context)
+    context.interruption_over = True
+    _reproduce(context, "--deep-smoke-files", "4")
+
+
+@when("I compare the results with themselves")
+def step_compare_self(context):
+    _eval(context, "compare", context.report_json, context.report_json)
+
+
+@when("I compare the results with a copy whose LeftBlock recall and gitleaks version are changed")
+def step_compare_changed(context):
+    changed = json.loads(json.dumps(context.results))
+    changed["datasets"]["creddata"]["full_files"]["detectors"]["gitleaks-leftblock"]["overall"]["recall"]["value"] = 0.123
+    changed["provenance"]["gitleaks"]["version"] = "9.9.9"
+    other = os.path.join(context.root, "changed.json")
+    with open(other, "w") as handle:
+        json.dump(changed, handle)
+    _eval(context, "compare", context.report_json, other)
+
+
+@when("I compare two results files that do not exist")
+def step_compare_missing(context):
+    _eval(context, "compare", os.path.join(context.root, "no-a.json"), os.path.join(context.root, "no-b.json"))
+
+
+@then("the exit code is not 0")
+def step_exit_nonzero(context):
+    assert context.result.returncode != 0, world.output(context)
+
+
+@then("no results were written")
+def step_no_results(context):
+    for directory in (context.results_dir, os.path.join(context.eval_root, "results")):
+        assert not glob.glob(os.path.join(directory, "*.json")), "results were written to " + directory
+
+
+@then("the results record gitleaks {version} as not matching the pin")
+def step_records_mismatch(context, version):
+    state = context.results["provenance"]["gitleaks"]
+    assert (state["version"], state["pinned"], state["matches_pin"]) == (version, PINNED, False), state
+
+
+@then("the results record the gitleaks version and the pinned one")
+def step_records_gitleaks(context):
+    state = context.results["provenance"]["gitleaks"]
+    assert state["version"] and state["pinned"] == PINNED, state
+    assert context.results["gitleaks_version"] == state["version"]
+
+
+@then("the results record the CredData commit and digests of its labels and files")
+def step_records_creddata(context):
+    from eval import pins
+    inputs = context.results["datasets"]["creddata"]["inputs"]
+    assert inputs["commit"] == pins.CREDDATA_COMMIT, inputs
+    for key in ("labels_sha256", "data_sha256"):
+        assert re.fullmatch(r"[0-9a-f]{64}", inputs[key]), inputs
+
+
+@then("the results record the tier definition and the ruleset digests")
+def step_records_tiers(context):
+    block = context.results["provenance"]["eval"]
+    for key in ("tiers_sha256", "ruleset_sha256"):
+        assert re.fullmatch(r"[0-9a-f]{64}", block[key]), block
+
+
+@then("the results record the seed and the deep sample size")
+def step_records_seed(context):
+    arguments = context.results["provenance"]["arguments"]
+    assert arguments["seed"] == context.results["datasets"]["creddata"]["seed"]
+    assert arguments["deep_sample"] == 100, arguments
+
+
+@then("the results record the deep-scan model at its pinned revision")
+def step_records_model(context):
+    from eval import pins
+    deep = context.results["provenance"]["deep_scan"]
+    assert (deep["model"], deep["revision"]) == (pins.MODEL_ID, pins.MODEL_REVISION), deep
+    assert deep["threshold"] == 0.9 and "secret" in deep["labels"], deep
+
+
+@then("the report lists these inputs in a provenance section")
+def step_report_provenance(context):
+    with open(context.report_md) as handle:
+        text = handle.read()
+    for needle in ("## Provenance", "gitleaks", "CredData commit", "Tier definition SHA-256", "Deep-scan model"):
+        assert needle in text, needle
+
+
+@then("the reproduced results hold both datasets")
+def step_reproduced_both(context):
+    assert context.results, "no results in " + context.reproduced_dir
+    assert sorted(context.results["datasets"]) == ["creddata", "generated"]
+
+
+@then("the reproduced deep sample reads {count:d} files and is marked as a smoke run")
+def step_reproduced_smoke(context, count):
+    sample = context.results["datasets"]["creddata"]["windows"]["sample"]
+    assert sample["files"] == count and sample["smoke_files"] == count, sample
+    with open(context.report_md) as handle:
+        assert "SMOKE RUN" in handle.read()
+
+
+@then("the reproduced generated corpus is scored without the deep scan")
+def step_reproduced_generated_shallow(context):
+    names = sorted(context.results["datasets"]["generated"]["full_files"]["detectors"])
+    assert names == ["gitleaks-leftblock", "gitleaks-stock"], names
+
+
+@then("the model was consulted for {count:d} more calls")
+def step_more_calls(context, count):
+    assert _calls(context) - context.calls_before == count, (_calls(context), context.calls_before)
+
+
+@then("the reproduced deep scan scores {count:d} true positives")
+def step_reproduced_tp(context, count):
+    counts = context.results["datasets"]["creddata"]["windows"]["detectors"]["deep-scan"]["overall"]["counts"]
+    assert counts["tp"] == count, counts
