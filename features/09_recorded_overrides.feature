@@ -7,8 +7,14 @@ Feature: Recorded overrides
   notice, say) is cleared with "leftblock allow <id> --reason ...". That records
   one entry in ".leftblock-allow.yml" and stages the file, but never commits.
   Only the staged version counts, so the exception is always part of the commit
-  and its review. An entry approves one rule on one exact line content in one
-  file: changing the line, or adding another finding, blocks again. Every check
+  and its review. An entry approves one reviewed value: one rule matching one
+  exact value in one file. Changing the matched value, or adding another
+  finding, blocks again; editing the rest of the line does not, so a reviewed
+  false alarm does not come back each time unrelated text beside it changes.
+  The same value flagged by the same rule on several lines of a file is one
+  reviewed value, and one entry covers all of those lines. Entries recorded by
+  earlier versions identified the whole line; they still apply to a line that
+  has not changed. Every check
   prints each override it applied with its reason. Invalid allow files fail
   closed, and errors (as opposed to findings) can never be overridden.
 
@@ -121,15 +127,75 @@ Feature: Recorded overrides
     And the noted finding ids no longer appear in the findings
 
   @gitleaks
-  Scenario: Changing an approved line blocks it again
+  Scenario: Unrelated edits to the rest of an approved line keep it approved
+    Given a repository with LeftBlock installed as a local check-only gate
+    And a staged file "page.tsx" containing a synthetic personal email
+    When I note the finding ids from a dry run
+    And I record an override for the noted findings because "Public role address for the site"
+    And I add text around the flagged address in "page.tsx" and stage it
+    And I run "leftblock check"
+    Then the exit code is 0
+    And stderr contains "Override applied"
+
+  @gitleaks
+  Scenario: Reworded text beside an approved value keeps it approved
     Given a repository with LeftBlock installed as a local check-only gate
     And a staged file "page.tsx" containing a synthetic personal email
     When I note the finding ids from a dry run
     And I record an override for the noted findings because "Public role address for the site"
     And I reword the flagged line of "page.tsx" and stage it
     And I run "leftblock check"
+    Then the exit code is 0
+
+  @gitleaks
+  Scenario: Changing the approved value blocks it again
+    Given a repository with LeftBlock installed as a local check-only gate
+    And a staged file "page.tsx" containing a synthetic personal email
+    When I note the finding ids from a dry run
+    And I record an override for the noted findings because "Public role address for the site"
+    And I replace the flagged address in "page.tsx" with another personal address and stage it
+    And I run "leftblock check"
     Then the exit code is 1
+    And exactly 1 finding is listed
     And the noted finding ids no longer appear in the findings
+
+  @gitleaks
+  Scenario: One override covers the same value on two lines of a file
+    Given a repository with LeftBlock installed as a local check-only gate
+    And a staged file "page.tsx" containing a synthetic personal email
+    And I add the flagged address to "page.tsx" again on another line and stage it
+    When I note the finding ids from a dry run
+    And I record an override for the noted findings because "Public role address for the site"
+    Then the staged allow file records 1 override
+    When I run "leftblock check"
+    Then the exit code is 0
+
+  @gitleaks
+  Scenario: Recording an override stores an id of the rule, the file and the value alone
+    Given a repository with LeftBlock installed as a local check-only gate
+    And a staged file "page.tsx" containing a synthetic personal email
+    When I note the finding ids from a dry run
+    And I record an override for the noted findings because "Public role address for the site"
+    Then the staged allow file entry for "page.tsx" has the id of its rule and the flagged value alone
+
+  @gitleaks
+  Scenario: An entry recorded by an earlier version still allows an unchanged line
+    Given a repository with LeftBlock installed as a local check-only gate
+    And a staged file "page.tsx" containing a synthetic personal email
+    And I replace the staged allow file with a line-based entry for rule "leftblock-personal-email" on the flagged line of "page.tsx"
+    When I run "leftblock check"
+    Then the exit code is 0
+    And stderr contains "Override applied"
+    And every override that applied is reported under its recorded id
+
+  @gitleaks
+  Scenario: An entry recorded by an earlier version blocks again when its line changes
+    Given a repository with LeftBlock installed as a local check-only gate
+    And a staged file "page.tsx" containing a synthetic personal email
+    And I replace the staged allow file with a line-based entry for rule "leftblock-personal-email" on the flagged line of "page.tsx"
+    When I reword the flagged line of "page.tsx" and stage it
+    And I run "leftblock check"
+    Then the exit code is 1
 
   @gitleaks
   Scenario: The same text in another file is not approved

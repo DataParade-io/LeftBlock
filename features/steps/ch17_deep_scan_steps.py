@@ -11,7 +11,7 @@ import random
 import re
 
 import yaml
-from behave import given, then, when
+from behave import given, step, then, when
 
 import synthetic_data
 import world
@@ -134,6 +134,30 @@ def step_reword(context, name):
         text = handle.read()
     with open(path, "w") as handle:
         handle.write("reworded_" + text)
+    world.git(context, "add", name)
+
+
+@step('the flagged value in "{name}" is replaced by another that the model flags and staged')
+def step_replace_value(context, name):
+    """A different value on the same line shape; the stub is told to flag it like the first."""
+    old = context.stub_spans[-1]
+    new = "".join(reversed(old["value"])).swapcase()
+    path = os.path.join(context.repo, name)
+    with open(path) as handle:
+        text = handle.read()
+    with open(path, "w") as handle:
+        handle.write(text.replace(old["value"], new))
+    context.stub_spans.append(dict(old, value=new))
+    context.synthetic_values.append(new)
+    with open(context.stub_spans_path, "w") as handle:
+        json.dump(context.stub_spans, handle)
+    world.git(context, "add", name)
+
+
+@step('the flagged value in "{name}" is repeated on another line and staged')
+def step_repeat_value(context, name):
+    with open(os.path.join(context.repo, name), "a") as handle:
+        handle.write("mirror_token = %s\n" % context.stub_spans[-1]["value"])
     world.git(context, "add", name)
 
 

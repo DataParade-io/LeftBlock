@@ -305,3 +305,82 @@ def step_copy_flagged_line(context, name):
         line = handle.read()
     world.write_file(context, name, line)
     world.git(context, "add", name)
+
+
+# --- Match-based ids and the older line-based ones ------------------------
+
+def _flagged_value(context):
+    return context.synthetic_values[-1]
+
+
+def _staged_line_with(context, name, value):
+    text = world.git(context, "show", ":" + name).stdout
+    lines = [line for line in text.split("\n") if value in line]
+    assert lines, "no staged line of %s holds the flagged value" % name
+    return lines[0]
+
+
+def _sha_id(rule, name, content):
+    import hashlib
+    return hashlib.sha256(("%s\0%s\0%s" % (rule, name, content)).encode()).hexdigest()[:16]
+
+
+@step('I replace the staged allow file with a line-based entry for rule "{rule}" on the flagged line of "{name}"')
+def step_legacy_entry(context, rule, name):
+    """What earlier versions recorded: an id hashing the rule, file and whole line."""
+    ident = _sha_id(rule, name, _staged_line_with(context, name, _flagged_value(context)))
+    text = (
+        "version: 1\nallow:\n"
+        '  - id: "%s"\n    rule: "%s"\n    file: "%s"\n'
+        '    reason: "Recorded by an earlier version of LeftBlock"\n' % (ident, rule, name)
+    )
+    world.write_file(context, ALLOW_FILE, text)
+    world.git(context, "add", ALLOW_FILE)
+    context.legacy_id = ident
+
+
+@step('I add the flagged address to "{name}" again on another line and stage it')
+def step_repeat_value(context, name):
+    """Append a second line holding the same personal address, then stage the file."""
+    world.write_file(context, name, "again: %s\n" % _flagged_value(context), append=True)
+    world.git(context, "add", name)
+
+
+@step('I replace the flagged address in "{name}" with another personal address and stage it')
+def step_replace_value(context, name):
+    """Swap the matched address for a different one, leaving the rest of the line."""
+    _rng(context)
+    old = _flagged_value(context)
+    path = os.path.join(context.repo, name)
+    with open(path) as handle:
+        text = handle.read()
+    with open(path, "w") as handle:
+        handle.write(text.replace(old, _new_address(context)))
+    world.git(context, "add", name)
+
+
+@step('I add text around the flagged address in "{name}" and stage it')
+def step_add_text_around(context, name):
+    """Change the rest of the line (before and after the value) and stage the file."""
+    value = _flagged_value(context)
+    path = os.path.join(context.repo, name)
+    with open(path) as handle:
+        text = handle.read()
+    with open(path, "w") as handle:
+        handle.write(text.replace(value, "<a href=\"x\">" + value + "</a> (updated copy)"))
+    world.git(context, "add", name)
+
+
+@then('the staged allow file entry for "{name}" has the id of its rule and the flagged value alone')
+def step_entry_match_id(context, name):
+    """The recorded id hashes rule, file and the matched value, not the whole line."""
+    entry = _staged_entries(context)[0]
+    expected = _sha_id(entry["rule"], name, _flagged_value(context))
+    assert entry["id"] == expected, (entry["id"], expected)
+    line = _staged_line_with(context, name, _flagged_value(context))
+    assert entry["id"] != _sha_id(entry["rule"], name, line)
+
+
+@then("every override that applied is reported under its recorded id")
+def step_reported_recorded_id(context):
+    assert 'id %s' % context.legacy_id in context.result.stderr, context.result.stderr

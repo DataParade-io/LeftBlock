@@ -261,8 +261,8 @@ def _chunks(lines):
 def scan(additions, detector, labels, threshold, kanbus_data):
     """Findings for the added lines.
 
-    Each is a dict with File, RuleID, line, id, description, score. The id is
-    the same hash `leftblock allow` records. The matched value is never kept.
+    Each is a dict with File, RuleID, line, id, legacy_id, description, score. The
+    id hashes the rule, file and flagged span; legacy_id hashes the whole line. The matched value is never kept.
     """
     by_file = {}
     for path, number, raw in additions:
@@ -288,11 +288,15 @@ def scan(additions, detector, labels, threshold, kanbus_data):
                     continue
                 number, _, whole = chunk[bisect.bisect_right(starts, start) - 1]
                 rule = RULE_PREFIX + label
-                ident = allowlist.content_id(rule, path, whole)
-                if ident in found and found[ident]["score"] >= score:
+                # The id hashes the flagged span, so unrelated edits to the line keep it;
+                # legacy_id is the older whole-line hash, still accepted by the allow file.
+                ident = allowlist.content_id(rule, path, value.strip())
+                key = (ident, number)
+                if key in found and found[key]["score"] >= score:
                     continue
-                found[ident] = {
+                found[key] = {
                     "File": path, "RuleID": rule, "line": number, "id": ident,
+                    "legacy_id": allowlist.content_id(rule, path, whole),
                     "description": "Privacy Filter: " + label, "score": score,
                 }
     return sorted(found.values(), key=lambda f: (f["File"], f["line"], f["RuleID"]))
