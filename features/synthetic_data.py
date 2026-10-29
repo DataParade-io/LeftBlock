@@ -22,6 +22,7 @@ Kind names are matched exactly as written in the feature file and must be
 unique across the suite.
 """
 
+import hashlib
 import string
 
 GENERATORS = {}
@@ -46,6 +47,27 @@ WORDS = [
 def token(rng, length, alphabet=ALNUM):
     """A random string of ``length`` characters drawn from ``alphabet``."""
     return "".join(rng.choice(alphabet) for _ in range(length))
+
+
+def base58check(payload):
+    """``payload`` plus its 4-byte double-SHA-256 checksum, base58-encoded."""
+    raw = payload + hashlib.sha256(hashlib.sha256(payload).digest()).digest()[:4]
+    number, out = int.from_bytes(raw, "big"), ""
+    while number:
+        number, rest = divmod(number, 58)
+        out = BASE58[rest] + out
+    return "1" * (len(raw) - len(raw.lstrip(b"\0"))) + out
+
+
+def wif(rng, compressed=True, version=0x80):
+    """A syntactically valid WIF built from random bytes (never a real key)."""
+    key = bytes(rng.randrange(256) for _ in range(32))
+    return base58check(bytes([version]) + key + (b"\x01" if compressed else b""))
+
+
+def bad_checksum(value):
+    """``value`` with its last character changed, which breaks a base58check checksum."""
+    return value[:-1] + ("2" if value[-1] != "2" else "3")
 
 
 def uuid4(rng):
@@ -173,7 +195,7 @@ def _eth_key(rng):
 
 @generator("Bitcoin WIF key")
 def _wif(rng):
-    value = "K" + token(rng, 51, BASE58)
+    value = wif(rng)
     return "wallet_import = %s\n" % value, [value]
 
 

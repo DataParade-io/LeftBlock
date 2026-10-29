@@ -3,12 +3,13 @@
 All fixtures are synthetic and generated at test time from a seeded RNG.
 No real credential, wallet, or personal value is ever embedded here:
   - hex strings are random bytes,
-  - WIF-shaped keys are random base58check-alphabet strings,
+  - WIF keys are random bytes with a computed version and checksum,
   - mnemonics are random draws from a subset of the real BIP-39
     wordlist (shape-identical to real seed phrases, but never a valid
     checksummed phrase for any wallet).
 """
 
+import hashlib
 import json
 import os
 import random
@@ -49,6 +50,17 @@ def rand_hex(rng, n):
 
 def rand_base58(rng, n):
     return "".join(rng.choice(BASE58_ALPHABET) for _ in range(n))
+
+
+def rand_wif(rng, compressed=True):
+    """A valid WIF built from random bytes (never a real key)."""
+    payload = b"\x80" + bytes(rng.randrange(256) for _ in range(32)) + (b"\x01" if compressed else b"")
+    raw = payload + hashlib.sha256(hashlib.sha256(payload).digest()).digest()[:4]
+    number, out = int.from_bytes(raw, "big"), ""
+    while number:
+        number, rest = divmod(number, 58)
+        out = BASE58_ALPHABET[rest] + out
+    return out
 
 
 def rand_b58_secret(rng, n):
@@ -173,8 +185,8 @@ class SensitiveFixtureTests(unittest.TestCase):
 
     def test_wif_bitcoin_keys_flagged(self):
         rng = _rng()
-        wif_compressed = rng.choice("KLM") + rand_base58(rng, 51)
-        wif_uncompressed = "5" + rand_base58(rng, 50)
+        wif_compressed = rand_wif(rng)
+        wif_uncompressed = rand_wif(rng, compressed=False)
         findings = scan_and_rule_ids({
             "wallet.txt": "\n".join([
                 f"btc_wif = {wif_compressed}",
