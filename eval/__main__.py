@@ -210,7 +210,7 @@ def cmd_compare(args):
     except (OSError, ValueError) as exc:
         print("Cannot read a results file: %s" % exc, file=sys.stderr)
         return 2
-    print(compare.render(a, b, os.path.basename(args.a), os.path.basename(args.b)))
+    print(compare.render(a, b, args.a, args.b))
     return 0
 
 

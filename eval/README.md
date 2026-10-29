@@ -55,8 +55,8 @@ python -m eval reproduce --skip-deep
 
 | Run | What it does | Time | Disk |
 |---|---|---|---|
-| `python -m eval reproduce --skip-deep` | gitleaks (a) and (b) on all of CredData and on the generated corpus | CredData download 10 to 20 minutes (once), then about 10 minutes | ~15 GB while downloading, ~3 GB kept |
-| `python -m eval reproduce` | adds the deep scan (c) and (d) on the default sample | the above plus 1.5 to 3 hours (CPU) | plus ~2.8 GB for the model weights |
+| `python -m eval reproduce --skip-deep` | gitleaks (a) and (b) on all of CredData and on the generated corpus | CredData download about 10 minutes (once; depends on your network), then 5 to 10 minutes of scanning | ~15 GB while downloading, ~1 GB kept |
+| `python -m eval reproduce` | adds the deep scan (c) and (d) on the default sample | the above plus 1.5 to 3 hours (CPU, 3 processes on an Apple M-series laptop: about 90 minutes) | plus ~2.8 GB for the model weights |
 | `python -m eval reproduce --deep-shards 3` | the same, with 3 parallel model processes | about half the deep-scan time | same |
 | `python -m eval reproduce --deep-smoke-files 40` | deep scan on 40 files only, to check the pipeline | about 5 minutes more | same |
 

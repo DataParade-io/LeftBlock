@@ -533,7 +533,7 @@ We measure it. The evaluation harness in [`eval/`](eval/README.md) scores four d
 Read these with care. The "critical tier" is passwords, cloud and provider keys, private keys and auth headers; precision is measured on lines CredData labelled, which are hard negatives, so it is not a false-alarm rate; the model may have seen CredData in training. [`eval/README.md`](eval/README.md) explains the method, the caveats and how to read every number, and gives one command to reproduce all of it:
 
 ```bash
-python -m eval reproduce --skip-deep   # gitleaks only; minutes plus a one-time ~3 GB CredData download
+python -m eval reproduce --skip-deep   # gitleaks only; minutes plus a one-time CredData download (~15 GB while it runs, ~1 GB kept)
 ```
 
 ## Custom Agent-Based Scanning (Tactus)

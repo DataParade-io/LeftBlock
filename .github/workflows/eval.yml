@@ -49,11 +49,15 @@ jobs:
           pip install pybase62==1.0.0
         fi
 
+    - name: Free disk space for the CredData download
+      run: |
+        sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android
+        df -h /
+
     - name: Reproduce
       run: |
         FLAGS="--skip-deep"
         if [ "${{ inputs.deep }}" = "true" ]; then FLAGS="--deep-smoke-files ${{ inputs.deep_files }}"; fi
-        df -h .
         python -m eval reproduce $FLAGS --data-dir "$RUNNER_TEMP/leftblock-eval-data" --results-dir "$RUNNER_TEMP/eval-results"
 
     - name: Compare with the committed results
