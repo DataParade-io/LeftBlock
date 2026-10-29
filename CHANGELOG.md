@@ -8,6 +8,29 @@ remain unchanged; commit links retain their original hashes.
 
 <!-- version list -->
 
+## v0.8.0 (2026-10-29)
+
+### Documentation
+
+- Diagram shows recorded overrides and the optional deep scan; drop donation wording; compare skips
+  smoke samples
+  ([`eb5b0b0`](https://github.com/DataParade-io/LeftBlock/commit/eb5b0b01cbd5d2646e5c7de3c064440db6fc7273))
+
+- Name the OpenAI Privacy Filter model in the intro, diagram and results
+  ([`c2af290`](https://github.com/DataParade-io/LeftBlock/commit/c2af2906cd9a4ce43bdf28380367263bac042faf))
+
+- **eval**: Cleanup of the Hugging Face cache and step vocabulary
+  ([`b636143`](https://github.com/DataParade-io/LeftBlock/commit/b6361436a5bd38cbdcd8573e3e2b996e628504de))
+
+- **eval**: Measured sizes and times, venv ignore, runner disk step
+  ([`ad1b2bd`](https://github.com/DataParade-io/LeftBlock/commit/ad1b2bda067a4ac82bd853fb2ec19faac316adfe))
+
+### Features
+
+- **eval**: Reproduce, check and compare commands, pinned inputs and recorded provenance
+  ([`48ef6e6`](https://github.com/DataParade-io/LeftBlock/commit/48ef6e63f3606d1ff2e5b875cb05fb5a5acf1453))
+
+
 ## v0.7.0 (2026-10-28)
 
 ### Features
