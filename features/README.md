@@ -74,3 +74,14 @@ authors are in [steps/README.md](steps/README.md).
     or, if allowed, warned about and recorded), every input recorded in the
     results, `reproduce` with its resumable deep scan and smoke runs, and
     `compare`.
+19. **Scanning text outside git** (`19_scanning_text`). `leftblock scan` runs the
+    shipped rules and post-filters (the WIF checksum) over text with no Git
+    behind it: JSONL records on stdin with findings as UTF-8 byte offsets
+    (multi-byte text and multi-line records checked by slicing, and the
+    one-column shift gitleaks applies to later lines corrected), or files and
+    directories in text or JSON. Finding ids match the hook's, recorded
+    overrides are not applied, no value is ever printed, the records live in
+    an owner-only temporary folder that gitleaks reads in one run and that is
+    removed even on failure, and `--deep` adds the model (stubbed in the
+    specs). Exit codes 0, 1 and 2, malformed lines, empty input, and running
+    outside a repository.

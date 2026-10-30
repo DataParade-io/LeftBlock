@@ -128,6 +128,38 @@ network.
   `the reproduced deep sample reads {n} files and is marked as a smoke run`,
   `the model was consulted for {n} more calls`
 
+## Scanning text steps (`ch19_scanning_steps.py`, chapter 19)
+
+Texts hold bracketed placeholders (`[email]`, `[email 2]`, `[wif]`, `[bad wif]`,
+`[openai key]`, `[pem]`, `[uuid]`, `[digest]`, `[flagged]`, `[person]`), filled with
+values generated at run time and remembered for the no-reveal check.
+
+- `a record "{id}" with the text:` (docstring) / `... with the text "{text}"`
+  (`\n` and `\r` stand for those characters),
+  `{n} clean records and then a record "{id}" with the text "{text}"`
+- `I scan the records` / `... with "{options}"`, `I scan empty input`,
+  `I scan the raw input:` (docstring, sent as is)
+- `the scan reports {n} finding(s)`, `finding {n} of record "{id}" is for rule
+  "{rule}" of kind "{kind}"`, `... slices to [placeholder]` (byte offsets applied to
+  the record), `... starts at byte {n}`, `... has score {s}`,
+  `every finding has exactly the fields "{a, b}"`, `nothing is printed on stdout`,
+  `stdout holds nothing but one JSON object per line`
+- ids: `every finding in record "{id}" has the same id`, `the ids of the findings in
+  records "{a}" and "{b}" differ`, `a staged file "{name}" with the text:`,
+  `I note the finding id from a check`, `I scan a record "{id}" holding the text of
+  the staged file "{name}"`, `the scan finding id equals the id the check gave`,
+  `I record an override for the noted finding because "{reason}"`
+- temporary files: `the temporary directory is a folder of the scenario` /
+  `... is empty`, `gitleaks fails when it is run`, `gitleaks calls are recorded`,
+  `gitleaks ran once`, `gitleaks was given {n} record files in a folder only the
+  owner can enter`, `no gitleaks argument holds any record text or value`
+- paths: `a file "{path}" with the text:` (under the scenario folder),
+  `a folder that is not inside any Git repository`,
+  `finding {n} of the JSON output slices "{path}" to [placeholder]`,
+  `the JSON output has {n} finding` / `no findings`
+- deep: after `the deep scan model is replaced by a stub detector`,
+  `the model recognises [placeholder] as {label} at {score}`
+
 ## Synthetic kinds
 
 Used as `a synthetic <kind>`. The content shown is what ends up in the file.

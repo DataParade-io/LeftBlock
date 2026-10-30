@@ -71,3 +71,12 @@ def check_findings(repo_root, results):
             result.findings = kept
         else:
             result.clean, result.findings = True, None
+
+
+def passes(rule_id, text):
+    """True unless the rule has a validator and the matched text fails it.
+
+    Fails closed: text that could not be read is kept.
+    """
+    validate = VALIDATORS.get(rule_id)
+    return validate is None or not text or bool(validate(text))
