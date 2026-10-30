@@ -8,6 +8,20 @@ remain unchanged; commit links retain their original hashes.
 
 <!-- version list -->
 
+## v0.9.0 (2026-10-30)
+
+### Features
+
+- **scan**: Add `leftblock scan` for text outside git
+  ([`7c71ffa`](https://github.com/DataParade-io/LeftBlock/commit/7c71ffa14a7dae233fe25c6cd913434d00de6e35))
+
+Scans JSONL records on stdin (--jsonl) or files and directories with the shipped ruleset and
+  post-filters (WIF checksum), optionally with the deep scan model (--deep). Findings carry UTF-8
+  byte offsets, rule, kind and the hook's match-based finding id; matched values are never printed.
+  Gitleaks runs once over a private temporary directory that is always removed. Recorded overrides
+  are not applied.
+
+
 ## v0.8.1 (2026-10-29)
 
 ### Bug Fixes
