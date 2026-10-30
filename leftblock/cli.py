@@ -8,6 +8,7 @@ import getpass
 import hashlib
 import shlex
 import shutil
+import signal
 import yaml
 from datetime import datetime, timezone
 from leftblock.merge import (
@@ -16,6 +17,7 @@ from leftblock.merge import (
 from leftblock import allow as allowlist
 from leftblock import bypass
 from leftblock import deep
+from leftblock import scan
 from leftblock import validators
 from leftblock.core import (
     get_secret, compute_hmac, get_tree_hash, get_commit_tree_hash,
@@ -707,6 +709,86 @@ def cmd_deep_scan(args):
     finish(EXIT_PASSED, "passed", (), applied)
 
 
+# --- Scanning text outside git ------------------------------------------------------
+
+def _scan_error(message):
+    print_err(message)
+    sys.exit(EXIT_ERROR)
+
+
+def _raise_interrupt(signum, frame):
+    raise KeyboardInterrupt
+
+
+def cmd_scan(args):
+    """Scan JSONL records (stdin) or files and directories with the shipped rules.
+
+    Needs no repository. Exit status: 0 no findings, 1 findings, 2 error.
+    Prints positions, rules and ids only, never the matched value. Recorded
+    overrides are not applied.
+    """
+    if args.jsonl and args.paths:
+        _scan_error("--jsonl reads records from standard input; do not also give paths.")
+    if not args.jsonl and not args.paths:
+        _scan_error("Give PATH... to scan, or --jsonl to read records from standard input.")
+    if args.jsonl and args.format:
+        _scan_error("--format applies to paths; --jsonl always prints one JSON finding per line.")
+    if not args.deep and (args.labels or args.threshold is not None):
+        _scan_error("--labels and --threshold apply to --deep.")
+    try:
+        labels = deep.parse_labels(args.labels)
+        threshold = deep.parse_threshold(
+            deep.DEFAULT_THRESHOLD if args.threshold is None else args.threshold
+        )
+    except ValueError as exc:
+        _scan_error(str(exc))
+
+    def detector_factory():
+        return deep.load_detector(print_info)
+
+    options = (detector_factory if args.deep else None, labels, threshold)
+    previous = None
+    try:
+        previous = signal.signal(signal.SIGTERM, _raise_interrupt)
+    except ValueError:  # not the main thread
+        pass
+    try:
+        if args.jsonl:
+            findings = scan.scan_records(scan.read_records(sys.stdin.buffer), *options)
+        else:
+            findings = scan.scan_paths(args.paths, *options, kanbus_data=KANBUS_DATA)
+    except scan.ScanError as exc:
+        _scan_error(str(exc))
+    except deep.DeepScanError as exc:
+        _scan_error(deep_error_message(exc))
+    except KeyboardInterrupt:
+        _scan_error("Interrupted.")
+    finally:
+        if previous is not None:
+            signal.signal(signal.SIGTERM, previous)
+
+    out = sys.stdout
+    try:
+        if args.jsonl:
+            for f in findings:
+                out.write(json.dumps({"id": f["file"], **{k: v for k, v in f.items() if k not in ("file", "line")}}) + "\n")
+        elif args.format == "json":
+            out.write(json.dumps({"findings": findings}, indent=2) + "\n")
+        else:
+            for f in findings:
+                score = f" (score {f['score']:.2f})" if "score" in f else ""
+                out.write(
+                    f"{_plain(f['file'])}:{f['line']}: {_plain(f['rule'])} [id {f['finding_id']}] "
+                    f"bytes {f['start']}-{f['end']}{score}\n"
+                )
+        out.flush()
+    except BrokenPipeError:
+        sys.stderr.close()
+    if findings and not args.jsonl and args.format != "json":
+        print_warn(f"{len(findings)} finding(s). Values are never printed; use the byte offsets to redact.")
+    sys.exit(EXIT_BLOCKED if findings else EXIT_PASSED)
+
+
 def cmd_allow_deep(args, reason):
     """leftblock allow --deep: record overrides for current deep-scan findings."""
     tree_hash = get_tree_hash()
@@ -1005,6 +1087,26 @@ def main():
     deep_p.add_argument("--format", choices=["text", "json"], default="text", help="With json, also print one JSON result object on stdout")
     add_deep_options(deep_p)
 
+    scan_p = subparsers.add_parser(
+        "scan",
+        help="Scan text outside git (JSONL records on stdin, or files and directories) with the shipped rules",
+        description="Scan text that is not in a Git repository with the same rules and post-filters as the "
+                    "commit hook. Prints byte offsets, rules and finding ids, never the matched value. "
+                    "Recorded overrides (.leftblock-allow.yml) are not applied. Exit status: 0 no "
+                    "findings, 1 findings, 2 error.",
+    )
+    scan_p.add_argument("paths", nargs="*", metavar="PATH", help="Files or directories to scan (recursive)")
+    scan_p.add_argument(
+        "--jsonl", action="store_true",
+        help='Read records {"id": "...", "text": "..."} one per line from standard input; print one JSON '
+             'finding per line with UTF-8 byte offsets into the record text',
+    )
+    scan_p.add_argument("--format", choices=["text", "json"], help="Output for paths (default text)")
+    scan_p.add_argument("--deep", action="store_true", help="Also run the Privacy Filter model (needs leftblock[deep])")
+    scan_p.add_argument("--labels", default="", help="With --deep, also report these comma-separated labels (off by default: "
+                        + ", ".join(deep.OPTIONAL_LABELS) + ")")
+    scan_p.add_argument("--threshold", default=None, help="With --deep, minimum model score (default %s)" % deep.DEFAULT_THRESHOLD)
+
     hook_p = subparsers.add_parser("hook", help="Run checkers (used internally by git hook)")
     hook_p.add_argument("commit_msg_file", help="Path to the commit message file")
 
@@ -1024,6 +1126,8 @@ def main():
         cmd_allow(args)
     elif args.command == "deep-scan":
         cmd_deep_scan(args)
+    elif args.command == "scan":
+        cmd_scan(args)
     elif args.command == "hook":
         cmd_hook(args)
     elif args.command == "verify":
