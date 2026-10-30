@@ -434,6 +434,58 @@ Hugging Face cache (it says so on stderr first), the model needs several GB of
 RAM, and a scan takes seconds per commit rather than milliseconds. That is why
 it is a separate command and not a hook.
 
+## Scanning text outside git (`leftblock scan`)
+
+The commit hook only sees staged diffs. `leftblock scan` applies the same
+shipped ruleset and post-filters (the Bitcoin WIF checksum, for one) to text
+that has no Git behind it, so other tools can reuse LeftBlock's rules. It needs
+gitleaks on `PATH` and no repository.
+
+Give it files or directories, or JSONL records on standard input:
+
+```bash
+leftblock scan notes/ transcript.txt            # recursive; file:LINE, rule, id, byte offsets
+leftblock scan --format json notes/             # {"findings": [{file, line, start, end, rule, kind, finding_id}]}
+leftblock scan --deep notes/                    # also the Privacy Filter model (needs leftblock[deep])
+```
+
+With `--jsonl`, each input line is one record, `{"id": "<opaque string>", "text": "<UTF-8 text>"}`,
+and each output line is one finding:
+
+```bash
+printf '{"id": "turn-1", "text": "Mail %s about the release"}\n' "$ADDRESS" | leftblock scan --jsonl
+```
+
+```json
+{"id": "turn-1", "start": 5, "end": 27, "rule": "leftblock-personal-email", "kind": "personal", "finding_id": "0123456789abcdef"}
+```
+
+(for a 22-byte address in `$ADDRESS`). `start` is inclusive and `end` exclusive,
+both **UTF-8 byte offsets** into that record's text, so with multi-byte
+characters and multi-line records `text.encode("utf-8")[start:end]` is the
+matched span; redact by replacing it. `kind` is `secret`, `personal`, `crypto`
+or `deep`. Deep findings (`rule` is `privacy-filter-<label>`) also carry a
+`score`. The matched value is never printed, in any mode. Path mode reports the
+same offsets into each file plus the `line`.
+
+- **Exit codes:** 0 no findings, 1 findings, 2 error (one line on stderr). A
+  malformed input line is an error that names the line number, never its
+  content; empty input is clean.
+- **Finding ids** are the hook's match-based ids with the record id (or path)
+  as the file, so the same value in the same record always has the same id.
+- **Overrides are not applied.** Recorded overrides in `.leftblock-allow.yml`
+  belong to a repository's commits; a scan reports everything the rules find.
+  Skips that only make sense for repositories (Kanbus board data under
+  `project/issues` and `project/events`) apply to paths, not to JSONL records.
+- **Temporary files:** records are written one file each into a private
+  (owner-only) temporary directory so gitleaks runs once over all of them; it is
+  removed afterwards, also on errors and interrupts. Values never travel in an
+  argument list.
+- **`--deep`** uses the deep scan's detector, default labels (`--labels` adds
+  more), threshold (`--threshold`) and shape filters. Unlike `deep-scan` it does
+  not skip lines mentioning `placeholder` or `example`: the text is yours to
+  judge.
+
 ## Out-of-the-Box Detection
 
 LeftBlock ships a Gitleaks ruleset (copied to `.leftblock/gitleaks.toml` in receipt mode) that

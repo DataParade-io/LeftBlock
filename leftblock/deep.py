@@ -111,6 +111,15 @@ def email_allowed(value):
     return any(p.search(value) for p in EMAIL_ALLOW)
 
 
+def shape_filtered(label, value):
+    """True when the flagged span is a known false-positive shape for its label."""
+    if label == "secret":
+        return secret_shaped(value)
+    if label == "private_email":
+        return email_allowed(value)
+    return False
+
+
 # --- Options --------------------------------------------------------------------
 
 def parse_labels(text):
@@ -282,9 +291,7 @@ def scan(additions, detector, labels, threshold, kanbus_data):
                 if label not in labels or score < threshold or not 0 <= start < end <= len(text):
                     continue
                 value = text[start:end]
-                if label == "secret" and secret_shaped(value):
-                    continue
-                if label == "private_email" and email_allowed(value):
+                if shape_filtered(label, value):
                     continue
                 number, _, whole = chunk[bisect.bisect_right(starts, start) - 1]
                 rule = RULE_PREFIX + label
@@ -300,3 +307,49 @@ def scan(additions, detector, labels, threshold, kanbus_data):
                     "description": "Privacy Filter: " + label, "score": score,
                 }
     return sorted(found.values(), key=lambda f: (f["File"], f["line"], f["RuleID"]))
+
+
+def scan_text(text, detector, labels, threshold):
+    """[(start, end, label, score)] character spans of free text the model flags.
+
+    The same labels, threshold and shape filters as `scan`, but for text that
+    is not a diff: no file or line exclusions, since the caller chose the text.
+    Long text is windowed like added lines are. The matched value is used only
+    to filter and is never returned.
+    """
+    pieces, at = [], 0
+    for line in text.split("\n"):
+        for i in range(0, max(len(line), 1), CHUNK_CHARS):
+            pieces.append((at + i, line[i:i + CHUNK_CHARS]))
+        at += len(line) + 1
+    chunks, chunk, size = [], [], 0
+    for piece in pieces:
+        if chunk and size + len(piece[1]) + 1 > CHUNK_CHARS:
+            chunks.append(chunk)
+            chunk, size = [], 0
+        chunk.append(piece)
+        size += len(piece[1]) + 1
+    if chunk:
+        chunks.append(chunk)
+    found = {}
+    for chunk in chunks:
+        joined = "\n".join(piece[1] for piece in chunk)
+        if not joined.strip():
+            continue
+        starts, here = [], 0
+        for piece in chunk:
+            starts.append(here)
+            here += len(piece[1]) + 1
+        for start, end, label, score in detector(joined):
+            if label not in labels or score < threshold or not 0 <= start < end <= len(joined):
+                continue
+            if shape_filtered(label, joined[start:end]):
+                continue
+            i = bisect.bisect_right(starts, start) - 1
+            j = bisect.bisect_right(starts, end - 1) - 1
+            first = chunk[i][0] + start - starts[i]
+            last = chunk[j][0] + end - 1 - starts[j] + 1
+            key = (first, last, label)
+            if last > first and (key not in found or found[key] < score):
+                found[key] = score
+    return sorted((s, e, label, score) for (s, e, label), score in found.items())
