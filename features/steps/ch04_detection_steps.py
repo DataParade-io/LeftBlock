@@ -110,3 +110,112 @@ def _public_digests(rng):
 @generator("unlabelled hex blob")
 def _hex_blob(rng):
     return token(rng, 64, HEX) + "\n", []
+
+
+# --- AWS account and resource identifiers ---------------------------------------
+# Each value is assembled at run time from random characters, so no line here
+# is shaped like an account id or a resource host name.
+
+DIGITS = "0123456789"
+REGION = "us-" + "east-1"
+
+
+def account_id(rng):
+    """A random 12-digit account number that is none of the documented examples."""
+    return "7" + token(rng, 11, DIGITS)
+
+
+@generator("AWS account id in an ARN")
+def _arn_account(rng):
+    value = account_id(rng)
+    return "role = arn:aws:iam::%s:role/deploy\n" % value, [value]
+
+
+@generator("AWS account id in an ECR host")
+def _ecr_account(rng):
+    value = account_id(rng)
+    return "image: %s.dkr.ecr.%s.amazonaws.com/app:latest\n" % (value, REGION), [value]
+
+
+@generator("labelled AWS account id")
+def _labelled_account(rng):
+    value = account_id(rng)
+    return 'account_id = "%s"\n' % value, [value]
+
+
+@generator("AWS account named in prose")
+def _prose_account(rng):
+    value = account_id(rng)
+    return "We deploy this stack to account %s every night.\n" % value, [value]
+
+
+@generator("Amplify app host")
+def _amplify_host(rng):
+    value = "d" + token(rng, 13, "abcdefghijklmnopqrstuvwxyz0123456789")
+    return "site: https://main.%s.amplifyapp.com\n" % value, [value]
+
+
+@generator("labelled Amplify app id")
+def _amplify_label(rng):
+    value = "d" + token(rng, 13, "abcdefghijklmnopqrstuvwxyz0123456789")
+    return 'appId: "%s"\n' % value, [value]
+
+
+@generator("AppSync API host")
+def _appsync_host(rng):
+    value = token(rng, 26, "abcdefghijklmnopqrstuvwxyz0123456789")
+    return "url: https://%s.appsync-api.%s.amazonaws.com/graphql\n" % (value, REGION), [value]
+
+
+@generator("API Gateway host")
+def _gateway_host(rng):
+    value = token(rng, 10, "abcdefghijklmnopqrstuvwxyz0123456789")
+    return "base: https://%s.execute-api.%s.amazonaws.com/prod\n" % (value, REGION), [value]
+
+
+@generator("Cognito user pool id")
+def _cognito_pool(rng):
+    value = REGION + "_" + token(rng, 9, ALNUM)
+    return 'user_pool = "%s"\n' % value, [value]
+
+
+@generator("CloudFront hostname")
+def _cloudfront_host(rng):
+    value = "d" + token(rng, 13, "abcdefghijklmnopqrstuvwxyz0123456789")
+    return "cdn: https://%s.cloudfront.net/\n" % value, [value]
+
+
+@generator("labelled CloudFront distribution id")
+def _cloudfront_label(rng):
+    value = "E" + token(rng, 13, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+    return "Invalidated distribution %s today\n" % value, [value]
+
+
+# Not findings: these generators return no values, and the scenarios expect a
+# clean commit.
+
+@generator("bare 12-digit numbers")
+def _bare_numbers(rng):
+    return "order %s shipped at %s\n" % (account_id(rng), "2026" + token(rng, 8, DIGITS)), []
+
+
+@generator("documented example account ids")
+def _example_accounts(rng):
+    return (
+        "arn:aws:iam::" + "123456789012" + ":root\n"
+        "account " + "111122223333" + "\n"
+        "account_id = \"" + "000000000000" + "\"\n"
+        + "123456789012" + ".dkr.ecr.us-east-1.amazonaws.com/app\n"
+    ), []
+
+
+@generator("AWS ids written as placeholders")
+def _placeholder_ids(rng):
+    return (
+        "arn:aws:iam::<account-id>:role/deploy\n"
+        "arn:aws:iam::${AWS_ACCOUNT_ID}:role/deploy\n"
+        "pool = us-east-1_EXAMPLE\n"
+        "pool = us-east-1_XXXXXXXXX\n"
+        "Amplify app deployments are listed in the console\n"
+        "git sha 3f2a9c1e7b4d5a60b1c2d3e4f5a6b7c8d9e0f1a2 and PPY-1f1489\n"
+    ), []

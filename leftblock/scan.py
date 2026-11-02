@@ -33,6 +33,7 @@ RULESET = Path(__file__).resolve().parent / "data" / "gitleaks.toml"
 PERSONAL_RULES = frozenset((
     "leftblock-personal-email", "leftblock-home-path-posix", "leftblock-home-path-windows",
     "leftblock-session-uuid", "leftblock-actor-id",
+    "leftblock-aws-account-id", "leftblock-aws-resource-id",
 ))
 CRYPTO_RULES = frozenset((
     "leftblock-eth-private-key", "leftblock-wif-key", "leftblock-bip39-mnemonic",

@@ -562,6 +562,8 @@ PEM private keys, and other standard secret formats.
 | `leftblock-home-path-windows` | `C:\Users\<name>` and `\Users\<name>` |
 | `leftblock-session-uuid` | Potential session UUIDs (not flagged in Kanbus board data; example values and the `.kanbus.yml` `project_id` line are also allowed) |
 | `leftblock-actor-id` | `actor_id` / `user_id` / `author_id` JSON values (not flagged in Kanbus board data) |
+| `leftblock-aws-account-id` | AWS account ids (12 digits) in context only: inside an ARN, an ECR host (`<id>.dkr.ecr.<region>.amazonaws.com`), or after a label such as `Account ID:`, `account_id =`, `accountId:`, `AWS account <id>`. A bare 12-digit number is never flagged. The documented examples `123456789012`, `111122223333`, `000000000000` and `${...}` template expressions are allowed. **Also flagged in Kanbus board data** |
+| `leftblock-aws-resource-id` | AWS resource ids: Amplify app ids (`<branch>.d….amplifyapp.com`, or labelled `app-id`, `appId`, `Amplify app`), AppSync API hosts and labelled ids, API Gateway hosts (`<id>.execute-api.<region>.amazonaws.com`), Cognito user pool ids (a region, an underscore, 8-12 characters), CloudFront hostnames (`d….cloudfront.net`) and labelled `distribution E…` ids. Placeholder shapes (all-letter ids, `EXAMPLE`, `XXXX`, `${...}`) are allowed. **Also flagged in Kanbus board data** |
 | `leftblock-openai-key` | `sk-`, `sk-proj-`, `sk-svcacct-`, `sk-admin-` OpenAI keys |
 | `leftblock-anthropic-key` | `sk-ant-` Anthropic keys |
 | `leftblock-groq-key` | Groq `gsk_` API keys, detected without any surrounding keyword |
@@ -593,8 +595,8 @@ Kanbus is the mandated task tracker, so identifiers in its board data (actor
 ids, session UUIDs, and UUIDs in any field or prose) are not sensitive and never
 block a `kbs` write. Board data means `project/issues/*.json`,
 `project/events/*.json` and `project/.cache/index.json`; the exception is
-limited to the session-UUID and actor-id rules, so personal emails, home paths
-and API or wallet keys in those files are still detected, and the same content
+limited to the session-UUID and actor-id rules, so personal emails, home paths,
+AWS account and resource ids, and API or wallet keys in those files are still detected, and the same content
 in any other path is still flagged.
 
 ### Crypto wallet material: what is and is not flagged
