@@ -15,6 +15,14 @@ Feature: What LeftBlock detects
   or image, say) is not flagged. AI provider keys
   have their own chapter; Kanbus board data has another.
 
+  AWS account ids and resource ids (Amplify apps, AppSync and API Gateway
+  endpoints, Cognito user pools, CloudFront distributions) are not credentials
+  but they name a deployment precisely, so they are kept out of public
+  repositories. They are flagged only in context: inside an ARN, an ECR or
+  service host name, or after a label such as "account id". A bare 12-digit
+  number is never flagged, because timestamps and order numbers look the same,
+  and AWS's documented example ids and obvious placeholders pass.
+
   Scenario Outline: A staged <kind> is blocked by its rule
     Given a repository with LeftBlock installed as a local check-only gate
     And a staged file "data.txt" containing a synthetic <kind>
@@ -183,3 +191,48 @@ Feature: What LeftBlock detects
     And a staged file "blob.txt" containing a synthetic unlabelled hex blob
     When I commit the staged files
     Then the commit succeeds
+
+  Scenario Outline: An AWS account id is blocked wherever it is named in context
+    Given a repository with LeftBlock installed as a local check-only gate
+    And a staged file "infra.txt" containing a synthetic <kind>
+    When I commit the staged files
+    Then the commit is blocked
+    And stderr contains "leftblock-aws-account-id"
+    And the output does not reveal the synthetic value
+
+    Examples:
+      | kind                        |
+      | AWS account id in an ARN    |
+      | AWS account id in an ECR host |
+      | labelled AWS account id     |
+      | AWS account named in prose  |
+
+  Scenario Outline: An AWS resource id is blocked in a host name or behind its label
+    Given a repository with LeftBlock installed as a local check-only gate
+    And a staged file "infra.txt" containing a synthetic <kind>
+    When I commit the staged files
+    Then the commit is blocked
+    And stderr contains "leftblock-aws-resource-id"
+    And the output does not reveal the synthetic value
+
+    Examples:
+      | kind                                |
+      | Amplify app host                    |
+      | labelled Amplify app id             |
+      | AppSync API host                    |
+      | API Gateway host                    |
+      | Cognito user pool id                |
+      | CloudFront hostname                 |
+      | labelled CloudFront distribution id |
+
+  Scenario Outline: Numbers and placeholders that only look like AWS ids commit cleanly
+    Given a repository with LeftBlock installed as a local check-only gate
+    And a staged file "infra.txt" containing a synthetic <kind>
+    When I commit the staged files
+    Then the commit succeeds
+
+    Examples:
+      | kind                           |
+      | bare 12-digit numbers          |
+      | documented example account ids |
+      | AWS ids written as placeholders |

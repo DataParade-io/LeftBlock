@@ -340,12 +340,15 @@ def shell_path(path):
 _REMOVE_AND_ROTATE = "Remove it AND rotate the key: it may already be exposed."
 _HOME_PATH = "Use a relative path, $HOME or ~ instead."
 _DESCRIBE_ID = "Drop the identifier or describe it instead."
+_AWS_ID = "Use a placeholder such as <account-id>, a variable or a reserved example value, or describe it instead."
 RULE_HINTS = {
     "leftblock-personal-email": "Use a role address or a reserved placeholder (example.com/.org/.net, or any .test, .example or .invalid domain), or describe it instead.",
     "leftblock-home-path-posix": _HOME_PATH,
     "leftblock-home-path-windows": _HOME_PATH,
     "leftblock-session-uuid": _DESCRIBE_ID,
     "leftblock-actor-id": _DESCRIBE_ID,
+    "leftblock-aws-account-id": _AWS_ID,
+    "leftblock-aws-resource-id": _AWS_ID,
     "leftblock-openai-key": _REMOVE_AND_ROTATE,
     "leftblock-anthropic-key": _REMOVE_AND_ROTATE,
     "leftblock-groq-key": _REMOVE_AND_ROTATE,

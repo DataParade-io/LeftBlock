@@ -11,7 +11,8 @@ Feature: Kanbus board data
   project cache index) the session UUID and actor id rules stay quiet. The
   exception is narrow. The same content anywhere else is still flagged;
   personal emails, home paths and keys inside board files are still flagged;
-  and the top-level project_id line of .kanbus.yml is accepted only as a
+  AWS account and resource ids are flagged in board files as well, in comment
+  and description text and in event payloads; and the top-level project_id line of .kanbus.yml is accepted only as a
   version 4 UUID. When a board file does block, the hint says to fix it
   through kbs rather than by hand, and for append-only event files says how.
 
@@ -122,6 +123,25 @@ Feature: Kanbus board data
       | project/events/llm_usage.jsonl                  | board document with a home path             | leftblock-home-path-posix |
       | project/.cache/index.json                       | board document with an OpenAI key           | leftblock-openai-key      |
       | sub/dir/project/issues/PPY-x.json               | board document with a personal email        | leftblock-personal-email  |
+
+  Scenario Outline: AWS ids and personal emails in event and issue text are blocked
+    Given a repository with LeftBlock installed as a local check-only gate
+    And a staged file "<path>" containing a synthetic <shape>
+    When I commit the staged files
+    Then the commit is blocked
+    And stderr contains "<rule>"
+    And the output does not reveal the synthetic value
+
+    Examples:
+      | path                                            | shape                                                 | rule                      |
+      | project/events/2026-10-20T00-00-00.000Z__x.json | board event with an AWS account id in a comment       | leftblock-aws-account-id  |
+      | project/events/2026-10-20T00-00-00.000Z__x.json | board event with a personal email in a comment        | leftblock-personal-email  |
+      | project/events/llm_usage.jsonl                  | board event with an AWS account id in a comment       | leftblock-aws-account-id  |
+      | project/issues/PPY-x.json                       | board event with an AWS account id in a comment       | leftblock-aws-account-id  |
+      | project/issues/PPY-x.json                       | board issue with an AWS resource id in its description | leftblock-aws-resource-id |
+      | project/events/e.json                           | board issue with an AWS resource id in its description | leftblock-aws-resource-id |
+      | sub/dir/project/events/e.json                   | board event with an AWS account id in a comment       | leftblock-aws-account-id  |
+      | project/.cache/index.json                       | board issue with an AWS resource id in its description | leftblock-aws-resource-id |
 
   Scenario Outline: The project id in .kanbus.yml is accepted only as a top-level version 4 UUID
     Given a repository with LeftBlock installed as a local check-only gate

@@ -337,6 +337,93 @@ def _is_ignored(finding: dict, ignored: set) -> bool:
     return any(fp.endswith(":" + e) or fp.endswith(e) for e in ignored)
 
 
+ACCOUNT = "7382" + "91650482"  # made up; none of the documented examples
+LOWER_DIGITS = "abcdefghijklmnopqrstuvwxyz0123456789"
+
+
+def _aws_cases(rng):
+    """Positive cases: file text -> expected rule. Values are assembled at run time."""
+    host26 = rand_from(rng, LOWER_DIGITS, 26)
+    host10 = rand_from(rng, LOWER_DIGITS, 10)
+    dist13 = "d" + rand_from(rng, LOWER_DIGITS, 13)
+    pool = "us-east-" + "1_" + rand_from(rng, ALNUM, 9)
+    cf_id = "E" + rand_from(rng, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", 13)
+    acct, res = "leftblock-aws-account-id", "leftblock-aws-resource-id"
+    return {
+        "arn:aws:iam::%s:role/x" % ACCOUNT: acct,
+        "arn:aws-us-gov:s3:us-gov-west-1:%s:bucket" % ACCOUNT: acct,
+        "arn:aws:sns:us-east-1:%s:topic" % ACCOUNT: acct,
+        "%s.dkr.ecr.us-east-1.amazonaws.com/app" % ACCOUNT: acct,
+        "Account ID: %s" % ACCOUNT: acct,
+        'account_id = "%s"' % ACCOUNT: acct,
+        'accountId: "%s"' % ACCOUNT: acct,
+        '"aws_account_id": "%s"' % ACCOUNT: acct,
+        "AWS account %s" % ACCOUNT: acct,
+        "run it in ACCOUNT %s tonight" % ACCOUNT: acct,
+        "https://main.%s.amplifyapp.com" % dist13: res,
+        "app-id %s" % dist13: res,
+        'appId: "%s"' % dist13: res,
+        "Amplify app %s" % dist13: res,
+        "%s.appsync-api.eu-west-1.amazonaws.com/graphql" % host26: res,
+        "appsync api id %s" % host26: res,
+        "%s.execute-api.us-west-2.amazonaws.com/prod" % host10: res,
+        "UserPoolId = %s" % pool: res,
+        "https://%s.cloudfront.net/x.js" % dist13: res,
+        "distribution %s" % cf_id: res,
+    }
+
+
+@unittest.skipIf(GITLEAKS is None, "gitleaks binary not installed")
+class AwsIdentifierTests(unittest.TestCase):
+    """AWS account and resource ids are flagged in context, never bare."""
+
+    def test_ids_in_context_are_flagged_with_the_right_rule(self):
+        for text, rule in _aws_cases(_rng()).items():
+            with self.subTest(text=text):
+                self.assertEqual(scan_and_rule_ids({"a.txt": text + "\n"}), [rule])
+
+    def test_bare_numbers_placeholders_and_lookalikes_are_not_flagged(self):
+        rng = _rng()
+        clean = [
+            "order %s shipped" % ACCOUNT,
+            "ts=202610281530",
+            "arn:aws:iam::" + "123456789012" + ":root",
+            "account " + "111122223333",
+            'account_id = "' + "000000000000" + '"',
+            "111122223333" + ".dkr.ecr.us-east-1.amazonaws.com/app",
+            "arn:aws:iam::<account-id>:role/x",
+            "arn:aws:iam::${AWS_ACCOUNT_ID}:role/x",
+            "arn:aws:iam::${{ vars.ACCOUNT }}:role/x",
+            "account balance and accounts payable",
+            "pool us-east-1_EXAMPLE and us-east-1_XXXXXXXXX and us-east-1_backups",
+            "Amplify app deployments are listed in the console",
+            "mockserver.execute-api.us-east-1.amazonaws.com",
+            "distribution ENGINEERING",
+            "git sha " + rand_hex(rng, 40) + " and kanbus-" + rand_hex(rng, 8),
+            "PPY-1f1489 BOTSPY-a1b2c3",
+        ]
+        for text in clean:
+            with self.subTest(text=text):
+                self.assertEqual(scan_and_rule_ids({"a.txt": text + "\n"}), [])
+
+    def test_ids_are_flagged_in_kanbus_board_data_events_and_issues(self):
+        """The board exception covers session UUIDs and actor ids only."""
+        email = "jane." + "doe@" + "example-corp" + ".co"
+        for path in KanbusBoardAllowlistTests.BOARD_PATHS:
+            for text, rule in (
+                ("deployed in account %s" % ACCOUNT, "leftblock-aws-account-id"),
+                ("preview main.d%s.amplifyapp.com" % rand_from(_rng(), LOWER_DIGITS, 13),
+                 "leftblock-aws-resource-id"),
+                ("ask %s" % email, "leftblock-personal-email"),
+            ):
+                for doc in (
+                    json.dumps({"description": text}, indent=2),
+                    json.dumps({"event_type": "comment_added", "payload": {"comment_text": text}}),
+                ):
+                    with self.subTest(path=path, rule=rule):
+                        self.assertIn(rule, scan_and_rule_ids({path: doc}))
+
+
 class DogfoodTests(unittest.TestCase):
     """Scan a real tree end-to-end when LEFTBLOCK_DOGFOOD_TREE is set."""
 
