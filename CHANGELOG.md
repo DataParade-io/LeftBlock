@@ -8,6 +8,25 @@ remain unchanged; commit links retain their original hashes.
 
 <!-- version list -->
 
+## v0.10.0 (2026-11-02)
+
+### Features
+
+- **ci**: Add `leftblock ci` to run local CI on an exact commit and issue a receipt
+  ([`88bc109`](https://github.com/DataParade-io/LeftBlock/commit/88bc109d4263ed82a50ed6f93f99b671f194fb51))
+
+Runs ci.command from .leftblock.yml on a clean tree at HEAD, writes a receipt to
+  .git/leftblock/receipts/<sha>.json (optionally HMAC-signed) and posts the leftblock/ci commit
+  status with gh, failure included. Supports --sha, --no-status and --dry-run.
+
+- **rules**: Flag AWS account and resource ids in context
+  ([`402785d`](https://github.com/DataParade-io/LeftBlock/commit/402785d67b9218816c020280ffdda959a4ab2664))
+
+Adds leftblock-aws-account-id (ARNs, ECR hosts, labelled accounts) and leftblock-aws-resource-id
+  (Amplify, AppSync, API Gateway, Cognito pool, CloudFront). Bare 12-digit numbers, AWS example ids
+  and placeholders pass. Kanbus board data gets no exception for these rules.
+
+
 ## v0.9.0 (2026-10-30)
 
 ### Features
