@@ -171,6 +171,60 @@ paths = [
 ]
 
 # --------------------------------------------------------------------
+# AWS account and resource identifiers
+#
+# Account ids and resource ids (Amplify apps, AppSync APIs, API Gateway
+# APIs, Cognito user pools, CloudFront distributions) are not credentials,
+# but they name a deployment precisely, so they are kept out of public
+# repositories. A bare 12-digit number is NOT flagged (timestamps and order
+# numbers look the same); an id is reported only in context: inside an ARN,
+# an ECR or service host name, or after a label such as "account id". The
+# capture group is the identifier itself. These rules have no board-data
+# exception: an id in a Kanbus issue, event or cache file is flagged too.
+# --------------------------------------------------------------------
+
+[[rules]]
+id = "leftblock-aws-account-id"
+description = "AWS account id (12 digits in an ARN, ECR host or account label)"
+regex = '''(?i)arn:aws[-a-z]*:[a-z0-9\-]+:[a-z0-9\-]*:(\d{12})(?:[^0-9]|$)|(?:^|[^0-9])(\d{12})\.dkr\.ecr(?:-fips)?\.[a-z0-9\-]+\.amazonaws\.com|account(?:[ _-]?(?:id|number|no))?["']?(?:\s*(?:=>|[:=])\s*|\s+)["'\x60]?(\d{12})(?:[^0-9]|$)'''
+keywords = ["arn:aws", "dkr.ecr", "account"]
+
+[[rules.allowlists]]
+description = "documented example and all-zero account ids, and template expressions"
+regexTarget = "secret"
+regexes = [
+  '''^(?:123456789012|111122223333|000000000000)$''',
+]
+
+[[rules.allowlists]]
+regexTarget = "match"
+regexes = [
+  '''\$\{''',
+]
+
+[[rules]]
+id = "leftblock-aws-resource-id"
+description = "AWS resource id (Amplify app, AppSync API, API Gateway API, Cognito user pool, CloudFront distribution)"
+regex = '''(?i)(?:^|[^a-z0-9])(?-i:(d[a-z0-9]{10,16}))\.amplifyapp\.com|(?:amplify[ _-]?app(?:[ _-]?id)?|app[ _-]?id)["']?(?:\s*(?:=>|[:=])\s*|\s+)["'\x60]?(?-i:(d[a-z0-9]{10,16}))(?:[^a-z0-9]|$)|(?:^|[^a-z0-9])(?-i:([a-z0-9]{26}))\.appsync-(?:realtime-)?api\.[a-z0-9\-]+\.amazonaws\.com|appsync[ _-]?(?:api[ _-]?)?id["']?(?:\s*(?:=>|[:=])\s*|\s+)["'\x60]?(?-i:([a-z0-9]{26}))(?:[^a-z0-9]|$)|(?:^|[^a-z0-9])(?-i:([a-z0-9]{10}))\.execute-api(?:-fips)?\.[a-z0-9\-]+\.amazonaws\.com|(?:^|[^A-Za-z0-9_\-])((?:[a-z]{2}|[a-z]{2}-gov)-[a-z]+-[0-9]_[A-Za-z0-9]{8,12})(?:[^A-Za-z0-9_]|$)|(?:^|[^a-z0-9])(?-i:(d[a-z0-9]{13}))\.cloudfront\.net|distribution(?:[ _-]?id)?["']?(?:\s*(?:=>|[:=])\s*|\s+)["'\x60]?(?-i:(E[A-Z0-9]{12,13}))(?:[^A-Za-z0-9]|$)'''
+keywords = ["amplify", "appid", "app-id", "app_id", "app id", "appsync", "execute-api", "cloudfront.net", "distribution", "-1_", "-2_", "-3_", "-4_", "-5_", "-6_", "-7_", "-8_", "-9_"]
+
+[[rules.allowlists]]
+description = "placeholder-shaped values: all-letter ids (words, not random ids) and X-filled or EXAMPLE pool ids"
+regexTarget = "secret"
+regexes = [
+  '''^(?:d|E)[a-zA-Z]{9,15}$''',
+  '''^[a-z]{10}$''',
+  '''^[a-z]{26}$''',
+  '''_(?:[a-z0-9]+|[A-Z]+|[Xx]+)$''',
+]
+
+[[rules.allowlists]]
+regexTarget = "match"
+regexes = [
+  '''\$\{''',
+]
+
+# --------------------------------------------------------------------
 # LLM provider API keys not covered by gitleaks defaults
 # (OpenAI sk- / sk-proj- / sk-svcacct-, Anthropic sk-ant-. Google
 # AI/Gemini keys AIza... are covered by the default gcp-api-key rule.)

@@ -101,6 +101,28 @@ def _board_actor_key(rng):
     return _doc({ACTOR: value}), [value]
 
 
+@generator("board event with an AWS account id in a comment")
+def _board_event_account(rng):
+    value = "7" + token(rng, 11, "0123456789")
+    doc = {"event_type": "comment_added",
+           "payload": {"comment_text": "deployed to account %s last night" % value}}
+    return _doc(doc), [value]
+
+
+@generator("board issue with an AWS resource id in its description")
+def _board_issue_resource(rng):
+    value = "d" + token(rng, 13, "abcdefghijklmnopqrstuvwxyz0123456789")
+    doc = {"id": "PPY-x", "description": "preview at https://main.%s.amplifyapp.com" % value}
+    return _doc(doc), [value]
+
+
+@generator("board event with a personal email in a comment")
+def _board_event_email(rng):
+    value = token(rng, 6, "abcdefghij") + "." + token(rng, 7, "abcdefghij") + "@" + token(rng, 9, "abcdefghij") + ".com"
+    doc = {"event_type": "comment_added", "payload": {"comment_text": "ask %s about it" % value}}
+    return _doc(doc), [value]
+
+
 # --- .kanbus.yml ------------------------------------------------------------
 
 def _non_v4(rng):

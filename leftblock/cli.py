@@ -16,6 +16,7 @@ from leftblock.merge import (
 )
 from leftblock import allow as allowlist
 from leftblock import bypass
+from leftblock import ci
 from leftblock import deep
 from leftblock import scan
 from leftblock import validators
@@ -339,12 +340,15 @@ def shell_path(path):
 _REMOVE_AND_ROTATE = "Remove it AND rotate the key: it may already be exposed."
 _HOME_PATH = "Use a relative path, $HOME or ~ instead."
 _DESCRIBE_ID = "Drop the identifier or describe it instead."
+_AWS_ID = "Use a placeholder such as <account-id>, a variable or a reserved example value, or describe it instead."
 RULE_HINTS = {
     "leftblock-personal-email": "Use a role address or a reserved placeholder (example.com/.org/.net, or any .test, .example or .invalid domain), or describe it instead.",
     "leftblock-home-path-posix": _HOME_PATH,
     "leftblock-home-path-windows": _HOME_PATH,
     "leftblock-session-uuid": _DESCRIBE_ID,
     "leftblock-actor-id": _DESCRIBE_ID,
+    "leftblock-aws-account-id": _AWS_ID,
+    "leftblock-aws-resource-id": _AWS_ID,
     "leftblock-openai-key": _REMOVE_AND_ROTATE,
     "leftblock-anthropic-key": _REMOVE_AND_ROTATE,
     "leftblock-groq-key": _REMOVE_AND_ROTATE,
@@ -1056,6 +1060,19 @@ def cmd_verify(args):
     else:
         print(f"\033[1;32mAll {len(commits)} commit(s) verified.\033[0m")
 
+def cmd_ci(args):
+    top = run_cmd(["git", "rev-parse", "--show-toplevel"], check=False)
+    if top.returncode != 0:
+        print_err("leftblock ci must run inside a Git repository.")
+        sys.exit(ci.EXIT_REFUSED)
+    try:
+        code = ci.run_ci(top.stdout.strip(), args.sha, post_status=not args.no_status, dry_run=args.dry_run)
+    except ci.CiRefusal as refusal:
+        print_err(str(refusal))
+        sys.exit(ci.EXIT_REFUSED)
+    sys.exit(code)
+
+
 def main():
     parser = argparse.ArgumentParser(description="LeftBlock - A pluggable inspection gate for Git commits")
     parser.add_argument("--version", action="version", version=f"leftblock {leftblock_version()}")
@@ -1107,6 +1124,17 @@ def main():
                         + ", ".join(deep.OPTIONAL_LABELS) + ")")
     scan_p.add_argument("--threshold", default=None, help="With --deep, minimum model score (default %s)" % deep.DEFAULT_THRESHOLD)
 
+    ci_p = subparsers.add_parser(
+        "ci",
+        help="Run the repository's local CI command on the exact HEAD commit and issue a receipt",
+        description="Run ci.command from .leftblock.yml on a clean work tree at HEAD, write a receipt to "
+                    ".git/leftblock/receipts/<sha>.json and post the leftblock/ci commit status with gh. "
+                    "The exit status is the CI command's; a refusal exits 2.",
+    )
+    ci_p.add_argument("--sha", default="HEAD", help="Commit to test; must resolve to HEAD (default HEAD)")
+    ci_p.add_argument("--no-status", action="store_true", help="Write the receipt only; do not post a commit status")
+    ci_p.add_argument("--dry-run", action="store_true", help="Check the preconditions and say what would happen; run nothing, write nothing")
+
     hook_p = subparsers.add_parser("hook", help="Run checkers (used internally by git hook)")
     hook_p.add_argument("commit_msg_file", help="Path to the commit message file")
 
@@ -1128,6 +1156,8 @@ def main():
         cmd_deep_scan(args)
     elif args.command == "scan":
         cmd_scan(args)
+    elif args.command == "ci":
+        cmd_ci(args)
     elif args.command == "hook":
         cmd_hook(args)
     elif args.command == "verify":

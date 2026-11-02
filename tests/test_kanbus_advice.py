@@ -92,6 +92,35 @@ class KanbusBoardTests(RepositoryFixture):
         self.assertIn("kbs delete <issue id>", proc.stderr)
         self.assertNotIn("kbs update", proc.stderr)
 
+    def test_event_and_issue_text_with_aws_ids_or_emails_blocks_through_the_hook(self):
+        """Board data is scanned through the hook: events as well as issues."""
+        account = "7" + "".join(str(self.rng.randrange(10)) for _ in range(11))
+        email = "jane." + "doe@" + "example-corp" + ".co"
+        cases = {
+            "project/events/2026-10-20T10-00-00.000Z__a.json": (
+                {"event_type": "comment_added", "payload": {"comment_text": "in account %s now" % account}},
+                "leftblock-aws-account-id", account),
+            "project/events/2026-10-20T10-00-00.000Z__b.json": (
+                {"event_type": "comment_added", "payload": {"comment_text": "ask %s" % email}},
+                "leftblock-personal-email", email),
+            "project/issues/kanbus-a.json": (
+                {"id": "kanbus-a", "description": "role arn:aws:iam::%s:role/x" % account},
+                "leftblock-aws-account-id", account),
+            "project/issues/kanbus-b.json": (
+                {"id": "kanbus-b", "comments": [{"text": "ask %s" % email}]},
+                "leftblock-personal-email", email),
+        }
+        for name, (doc, rule, value) in cases.items():
+            with self.subTest(file=name):
+                self.write(name, json.dumps(doc, indent=2))
+                proc = self.leftblock("check")
+                self.assertEqual(proc.returncode, 1, proc.stderr)
+                self.assertIn(name + ":", proc.stderr)
+                self.assertIn(rule, proc.stderr)
+                self.assertNotIn(value, proc.stdout + proc.stderr)
+                self.git("reset", "-q", "--", name)
+                (self.repo / name).unlink()
+
     def test_hint_is_printed_once_per_rule(self):
         self.write("notes.md", "a /" + "Users/one/x\nb /" + "Users/two/y\n")
         proc = self.leftblock("check")

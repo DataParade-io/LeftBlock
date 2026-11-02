@@ -85,3 +85,11 @@ authors are in [steps/README.md](steps/README.md).
     removed even on failure, and `--deep` adds the model (stubbed in the
     specs). Exit codes 0, 1 and 2, malformed lines, empty input, and running
     outside a repository.
+20. **Receipts for a local CI run** (`20_ci_receipts`). `leftblock ci` runs the
+    repository's `ci.command` on a clean tree at exactly HEAD, writes a receipt
+    to `.git/leftblock/receipts/<sha>.json` (optionally HMAC-signed with the
+    shared secret) and posts the `leftblock/ci` commit status with `gh`,
+    failure included, so a deploy can refuse an untested or red commit. Dirty
+    trees, other commits and missing policy are refused with status 2;
+    `--no-status` and `--dry-run` post nothing. `gh` is a recording stand-in
+    in the specs.

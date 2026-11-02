@@ -486,6 +486,62 @@ same offsets into each file plus the `line`.
   not skip lines mentioning `placeholder` or `example`: the text is yours to
   judge.
 
+## Receipts for a local CI run (`leftblock ci`)
+
+For repositories that run CI on a laptop instead of in paid build minutes,
+`leftblock ci` runs the repository's CI command on an exact commit and leaves
+proof of the result that a deploy can check.
+
+```yaml
+# .leftblock.yml
+ci:
+  command: npm test            # one shell command; the repo decides what CI means
+  status_context: leftblock/ci # GitHub commit status context (this is the default)
+  sign: true                   # optional HMAC with the LEFTBLOCK_SECRET_PATH secret
+```
+
+```bash
+leftblock ci                # test HEAD, write the receipt, post the status
+leftblock ci --no-status    # receipt only, for offline runs
+leftblock ci --dry-run      # check the preconditions; run, write and post nothing
+```
+
+1. The run is refused (exit 2) unless the work tree is clean and `--sha`
+   (default `HEAD`) resolves to HEAD, so the receipt is for exactly what was
+   tested.
+2. `ci.command` runs in the repository root with its output streamed.
+3. The receipt is written to `.git/leftblock/receipts/<sha>.json`:
+
+   ```json
+   {
+     "sha": "<40 hex>", "tree": "<40 hex>", "describe": "<git describe --always>",
+     "checks": [{"command": "npm test", "exit_code": 0, "duration_s": 41.2}],
+     "result": "success",
+     "started_at": "2026-10-31T12:00:00Z", "finished_at": "2026-10-31T12:00:41Z",
+     "tools": {"node": "v20.0.0", "python3": "Python 3.12.0", "git": "git version 2.45.0", "leftblock": "0.9.0"},
+     "leftblock_version": "0.9.0", "host": "<hostname>",
+     "signature": "hmac-sha256:<64 hex>"
+   }
+   ```
+
+   `result` is `success` or `failure`. `signature` is present only with
+   `sign: true`: HMAC-SHA256 over `sha|tree|result|finished_at` with the shared
+   secret, the same shape as the commit trailers.
+4. Unless `--no-status` is given, the result is posted with
+   `gh api repos/{owner}/{repo}/statuses/<sha>` as state `success` or
+   `failure`, context `leftblock/ci`, description
+   `<result> <n> checks <duration>s [sig:<first 12 hex>]`. A failing run still
+   posts `failure`, so a deploy gate sees red. If the post itself fails, the
+   error is printed and the exit status is 1 (the CI command's status when it
+   failed).
+5. The exit status is the CI command's status.
+
+**Trust model.** The receipt guards against mistakes, such as forgetting to run
+the checks or deploying a red commit. It does not guard against a malicious
+committer: anyone with the GitHub token can post the status, and anyone with
+the secret can sign. A signature lets a deploy gate check that the receipt was
+minted by a machine holding the secret.
+
 ## Out-of-the-Box Detection
 
 LeftBlock ships a Gitleaks ruleset (copied to `.leftblock/gitleaks.toml` in receipt mode) that
@@ -506,6 +562,8 @@ PEM private keys, and other standard secret formats.
 | `leftblock-home-path-windows` | `C:\Users\<name>` and `\Users\<name>` |
 | `leftblock-session-uuid` | Potential session UUIDs (not flagged in Kanbus board data; example values and the `.kanbus.yml` `project_id` line are also allowed) |
 | `leftblock-actor-id` | `actor_id` / `user_id` / `author_id` JSON values (not flagged in Kanbus board data) |
+| `leftblock-aws-account-id` | AWS account ids (12 digits) in context only: inside an ARN, an ECR host (`<id>.dkr.ecr.<region>.amazonaws.com`), or after a label such as `Account ID:`, `account_id =`, `accountId:`, `AWS account <id>`. A bare 12-digit number is never flagged. The documented examples `123456789012`, `111122223333`, `000000000000` and `${...}` template expressions are allowed. **Also flagged in Kanbus board data** |
+| `leftblock-aws-resource-id` | AWS resource ids: Amplify app ids (`<branch>.d….amplifyapp.com`, or labelled `app-id`, `appId`, `Amplify app`), AppSync API hosts and labelled ids, API Gateway hosts (`<id>.execute-api.<region>.amazonaws.com`), Cognito user pool ids (a region, an underscore, 8-12 characters), CloudFront hostnames (`d….cloudfront.net`) and labelled `distribution E…` ids. Placeholder shapes (all-letter ids, `EXAMPLE`, `XXXX`, `${...}`) are allowed. **Also flagged in Kanbus board data** |
 | `leftblock-openai-key` | `sk-`, `sk-proj-`, `sk-svcacct-`, `sk-admin-` OpenAI keys |
 | `leftblock-anthropic-key` | `sk-ant-` Anthropic keys |
 | `leftblock-groq-key` | Groq `gsk_` API keys, detected without any surrounding keyword |
@@ -537,8 +595,8 @@ Kanbus is the mandated task tracker, so identifiers in its board data (actor
 ids, session UUIDs, and UUIDs in any field or prose) are not sensitive and never
 block a `kbs` write. Board data means `project/issues/*.json`,
 `project/events/*.json` and `project/.cache/index.json`; the exception is
-limited to the session-UUID and actor-id rules, so personal emails, home paths
-and API or wallet keys in those files are still detected, and the same content
+limited to the session-UUID and actor-id rules, so personal emails, home paths,
+AWS account and resource ids, and API or wallet keys in those files are still detected, and the same content
 in any other path is still flagged.
 
 ### Crypto wallet material: what is and is not flagged
