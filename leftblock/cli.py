@@ -237,6 +237,9 @@ def _run_configured_checks(repo_root, config_path=None):
             results.append(CheckerResult(
                 "leftblock-bypass", False, "Could not read the staged diff.", error=True,
             ))
+        model_result = privacy_filter_result(repo_root, env if scoped_index else base_env)
+        if model_result:
+            results.append(model_result)
         if scoped_index:
             try:
                 stable = merge_state(repo_root) == state and index_entries(repo_root, scoped_index) == entries
@@ -252,6 +255,42 @@ def _run_configured_checks(repo_root, config_path=None):
     finally:
         if scoped_index and os.path.exists(scoped_index):
             os.remove(scoped_index)
+
+
+def privacy_filter_result(repo_root, env):
+    """The Privacy Filter's result for the commit gate, or None when it is off or skipped.
+
+    Reads the staged additions through `env` (the merge-scoped index during a
+    merge). Findings use the deep-scan shape, so overrides work as for any other.
+    An unavailable model blocks, or only warns when onUnavailable is warn.
+    """
+    try:
+        settings = deep.read_settings(repo_root, env)
+    except ValueError as exc:
+        return CheckerResult("privacy-filter", False, str(exc), error=True)
+    if settings.mode == "off":
+        return None
+    try:
+        detector = gate_detector(settings)
+        additions = deep.staged_additions(repo_root, env)
+        findings = deep.scan(additions, detector, settings.labels, settings.threshold, KANBUS_DATA)
+    except deep.Unavailable as exc:
+        message = deep_error_message(exc)
+        if settings.on_unavailable == "warn":
+            print_warn("Privacy Filter skipped: " + message)
+            return None
+        return CheckerResult("privacy-filter", False, message, error=True)
+    except deep.DeepScanError as exc:
+        return CheckerResult("privacy-filter", False, deep_error_message(exc), error=True)
+    return CheckerResult("privacy-filter", not findings, findings or None)
+
+
+def gate_detector(settings, download_allowed=False):
+    """The detector for the configured mode: the resident server, or the model in this process."""
+    if settings.mode == "resident":
+        from leftblock import server
+        return server.ServerDetector(settings.idle_minutes, print_info)
+    return deep.load_detector(print_info, deep.MODEL_REVISION, local_only=not download_allowed)
 
 
 def _plain(text):
@@ -630,8 +669,8 @@ def add_deep_options(parser):
              + ", ".join(deep.OPTIONAL_LABELS) + ")",
     )
     parser.add_argument(
-        "--threshold", default=str(deep.DEFAULT_THRESHOLD),
-        help="Minimum model score to report (default %(default)s)",
+        "--threshold", default=None,
+        help="Minimum model score to report (default: leftblock.deep.threshold, else %s)" % deep.DEFAULT_THRESHOLD,
     )
 
 
@@ -639,20 +678,24 @@ def deep_options_flags(args):
     flags = ""
     if args.labels:
         flags += " --labels " + shlex.quote(args.labels)
-    if args.threshold != str(deep.DEFAULT_THRESHOLD):
+    if args.threshold is not None:
         flags += " --threshold " + shlex.quote(args.threshold)
     return flags
 
 
 def deep_findings(args, revisions=None):
     """Deep-scan findings, or raise deep.DeepScanError. Prints the download notice."""
-    labels = deep.parse_labels(args.labels)
-    threshold = deep.parse_threshold(args.threshold)
-    detector = deep.load_detector(print_info)
     top = run_cmd(["git", "rev-parse", "--show-toplevel"], check=False)
     if top.returncode:
         raise deep.DeepScanError("Not inside a Git repository.")
     repo_root = top.stdout.strip()
+    settings = deep.read_settings(repo_root)
+    labels = tuple(dict.fromkeys(settings.labels + deep.parse_labels(args.labels)))
+    threshold = settings.threshold if args.threshold is None else deep.parse_threshold(args.threshold)
+    if settings.mode == "off":
+        detector = deep.load_detector(print_info)
+    else:
+        detector = gate_detector(settings, download_allowed=True)
     additions = (
         deep.range_additions(repo_root, revisions) if revisions else deep.staged_additions(repo_root)
     )
@@ -668,8 +711,9 @@ def deep_error_message(exc):
 def cmd_deep_scan(args):
     """Opt-in model scan of staged additions (or of a commit range, for CI).
 
-    Never run by the commit hook. Exit status as for check: 0 passed, 1
-    findings, 2 the scan could not complete. Prints location, label, score and
+    Runs in the commit hook only when leftblock.deep.mode turns that on; it
+    then uses the configured labels, threshold and resident server. Exit
+    status as for check: 0 passed, 1 findings, 2 the scan could not complete. Prints location, label, score and
     id only, never the matched value.
     """
     as_json = args.format == "json"
@@ -711,6 +755,32 @@ def cmd_deep_scan(args):
         finish(EXIT_BLOCKED, "blocked", findings, applied, command=command)
     print_info("Deep scan passed for " + ("commits in " + args.range if args.range else "staged changes") + ".")
     finish(EXIT_PASSED, "passed", (), applied)
+
+
+# --- Resident server -----------------------------------------------------------------
+
+def cmd_deep_server(args):
+    """leftblock deep-server serve|status|stop|download."""
+    from leftblock import server
+    try:
+        if args.action == "serve":
+            sys.exit(server.serve(args.idle_minutes))
+        if args.action == "download":
+            server.download(print_info)
+        elif args.action == "stop":
+            print_info("Stopped the Privacy Filter server." if server.stop() else "No Privacy Filter server is running.")
+        else:
+            reply = server.status()
+            if not reply:
+                print_info("No Privacy Filter server is running.")
+                sys.exit(EXIT_BLOCKED)
+            print_info(
+                "Privacy Filter server running: pid %d, leftblock %s, model %s at revision %s."
+                % (reply["pid"], reply["version"], reply["model"], reply["revision"])
+            )
+    except deep.DeepScanError as exc:
+        print_err(deep_error_message(exc))
+        sys.exit(EXIT_ERROR)
 
 
 # --- Scanning text outside git ------------------------------------------------------
@@ -1104,6 +1174,14 @@ def main():
     deep_p.add_argument("--format", choices=["text", "json"], default="text", help="With json, also print one JSON result object on stdout")
     add_deep_options(deep_p)
 
+    server_p = subparsers.add_parser(
+        "deep-server", help="The resident Privacy Filter server for the commit gate (needs leftblock[deep])",
+    )
+    server_p.add_argument("action", choices=["serve", "status", "stop", "download"],
+                          help="serve runs the server in this process; download fetches the model")
+    server_p.add_argument("--idle-minutes", type=float, default=deep.DEFAULT_IDLE_MINUTES,
+                          help="With serve, exit after this many idle minutes (0 never; default %(default)s)")
+
     scan_p = subparsers.add_parser(
         "scan",
         help="Scan text outside git (JSONL records on stdin, or files and directories) with the shipped rules",
@@ -1154,6 +1232,8 @@ def main():
         cmd_allow(args)
     elif args.command == "deep-scan":
         cmd_deep_scan(args)
+    elif args.command == "deep-server":
+        cmd_deep_server(args)
     elif args.command == "scan":
         cmd_scan(args)
     elif args.command == "ci":

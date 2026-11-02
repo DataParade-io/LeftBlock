@@ -4,7 +4,7 @@
 
 LeftBlock **shifts privacy checks left**: detected sensitive material can be blocked before it enters a commit and becomes part of local Git history. Pushing distributes that history to a remote; subsequent clones and pulls distribute it further. A later check can stop the next step, but cannot undo copies already made.
 
-LeftBlock pairs gitleaks rules in the commit hook with an optional deep scan that uses OpenAI's open-weight [Privacy Filter](https://huggingface.co/openai/privacy-filter) model (Apache-2.0). The model runs locally on CPU and nothing leaves the machine. It reads text rather than matching patterns, so it can flag unformatted secrets such as passwords and authorization headers that regex rules miss; [how much it adds is measured below](#how-well-does-it-work).
+LeftBlock pairs gitleaks rules in the commit hook with an optional model scan that uses OpenAI's open-weight [Privacy Filter](https://huggingface.co/openai/privacy-filter) model (Apache-2.0). The model runs locally on CPU and nothing leaves the machine. It reads text rather than matching patterns, so it can flag unformatted secrets such as passwords and authorization headers that regex rules miss; [how much it adds is measured below](#how-well-does-it-work).
 
 ```mermaid
 flowchart LR
@@ -19,17 +19,20 @@ flowchart LR
     Remote -->|Clone / pull| Copies["Downstream copies"]
     Work -.->|"Hook bypass (--no-verify)"| History
     Check -.->|"Receipt mode: interactive approval"| History
-    History -.->|"Optional, not in the hook"| Later["Later checks<br/>pre-push / CI / receipt verification<br/>optional: leftblock deep-scan<br/>(OpenAI Privacy Filter)"]
+    Check -.->|"Optional, off by default"| Model["Privacy Filter model<br/>resident server or per-commit"]
+    Model -.->|"Finding: commit BLOCKED"| Block
+    History -.->|"Optional"| Later["Later checks<br/>pre-push / CI / receipt verification<br/>optional: leftblock deep-scan<br/>(OpenAI Privacy Filter)"]
     Remote -.-> Later
     Later --> Limit["May stop further distribution or deployment<br/>Material is already in history"]
 
     style Block stroke-width:3px
     style Check stroke-width:3px
     style Allow stroke-dasharray:6 3
+    style Model stroke-dasharray:3 3
     style Later stroke-dasharray:3 3
 ```
 
-Solid arrows are the normal path; dashed arrows are bypasses and later, optional layers. The commit hook runs gitleaks with LeftBlock's rules; the model-based [`leftblock deep-scan`](#deep-scan-optional) is not in the hook and runs later, in CI or before a push. Later layers can stop the next step, but cannot undo copies already made.
+Solid arrows are the normal path; dashed arrows are bypasses and later, optional layers. The commit hook runs gitleaks with LeftBlock's rules, and, only if you turn it on, the Privacy Filter model as well ([the model in the commit gate](#the-model-in-the-commit-gate)); the [`leftblock deep-scan`](#deep-scan-optional) command runs the same model on demand, in CI or before a push. Later layers can stop the next step, but cannot undo copies already made.
 
 Local check-only mode installs a Git **`pre-commit` hook**. Receipt mode installs a **`commit-msg` hook**, which runs later but still before Git creates the commit object. The local hook offers no interactive override and adds no receipt; a false alarm can be handled only by a recorded, reasoned override that is committed and reviewable (see [Overriding a false alarm](#overriding-a-false-alarm)). The default Gitleaks command scans the staged diff, not every working-tree file or all existing history. Staging may already write blobs to the local object database, so blocking a commit does not erase every local copy.
 
@@ -370,8 +373,10 @@ Pattern rules cannot see everything. `leftblock deep-scan` adds a second,
 model-based opinion using OpenAI's [Privacy Filter](https://huggingface.co/openai/privacy-filter)
 (Apache-2.0; [model card and paper, arXiv 2608.18274](https://arxiv.org/abs/2608.18274);
 [code on GitHub](https://github.com/openai/privacy-filter)), a token-classification model run through the Hugging Face
-`transformers` pipeline on CPU. It is opt-in and **never part of the commit
-hook**, which stays on gitleaks only.
+`transformers` pipeline on CPU. It is opt-in. The commit hook stays on
+gitleaks unless you turn the model on for the gate
+([below](#the-model-in-the-commit-gate)); this command is the on-demand way to
+run it, and the way CI runs it.
 
 Install the extra and run it:
 
@@ -409,7 +414,8 @@ leftblock allow --deep ID --reason "Why this is not sensitive"
 ```
 
 (`allow --deep` takes the same `--labels` and `--threshold` as the scan that
-printed the id.) As for gitleaks findings, the id hashes the rule, the file and
+printed the id; without them it uses `leftblock.deep.labels` and
+`leftblock.deep.threshold` and, in resident mode, the running server.) As for gitleaks findings, the id hashes the rule, the file and
 the span the model flagged, so unrelated edits to the line keep the override;
 entries with the older whole-line ids still apply. In `--range` mode the committed `.leftblock-allow.yml` is
 honoured the same way. Range mode reads each non-merge commit's own additions,
@@ -432,7 +438,62 @@ A CI job (GitHub Actions) that scans a pull request:
 Cost, honestly: the first run downloads about 2.8 GB of weights to the normal
 Hugging Face cache (it says so on stderr first), the model needs several GB of
 RAM, and a scan takes seconds per commit rather than milliseconds. That is why
-it is a separate command and not a hook.
+it is off in the hook unless you ask for it.
+
+### The model in the commit gate
+
+The same model can run inside the gate, so a secret the pattern rules miss is
+blocked before the commit exists. It is **off unless a person turns it on**,
+and the settings are plain Git configuration, so nothing is committed to the
+repository: `git config --global` sets a machine default, a plain `git config`
+sets one repository, and `git -c leftblock.deep.mode=off commit` covers one
+commit. An invalid value blocks and names the key; it never falls back
+silently.
+
+| Setting | Values | Meaning |
+|---|---|---|
+| `leftblock.deep.mode` | `off` (default), `resident`, `per-commit` | `resident` asks a background server that keeps the model in memory. `per-commit` loads the model in the hook process every time, with no server, for machines that cannot spare the memory between commits. |
+| `leftblock.deep.onUnavailable` | `block` (default), `warn` | What a missing extra or model, or a server that cannot start, means. `block` refuses the commit and offers no override. `warn` prints a warning and lets the commit continue. |
+| `leftblock.deep.idleMinutes` | number, default 60; 0 never | Resident only: the server exits after this long without a scan. |
+| `leftblock.deep.labels`, `leftblock.deep.threshold` | as `--labels`, `--threshold` | Which labels are reported and the minimum score. |
+
+```bash
+pip install 'leftblock[deep]'
+leftblock deep-server download            # fetches the pinned weights and says how large they are
+git config --global leftblock.deep.mode resident
+```
+
+Both `leftblock check` and the commit hook (local and receipt mode) run the
+model as one more checker named `privacy-filter`, even when gitleaks has
+already found something, so one attempt reports everything. A finding blocks
+like a gitleaks finding, never prints the value, and is overridden the same
+way, in one `leftblock allow` command for a mix of both kinds. During a merge it
+reads the same merge-scoped index as the other checkers. The hook never
+downloads the model: if it is absent, run `leftblock deep-server download`.
+
+**The resident server.** `leftblock deep-server serve|status|stop|download`.
+The first commit that needs it starts it in the background and waits for as long
+as it is loading; later commits reuse it, so about 5 seconds of start-up leave
+every commit after the first. Concurrent first commits start exactly one. It
+listens on a Unix socket in `$XDG_RUNTIME_DIR/leftblock/` (else
+`~/.cache/leftblock/run/`), in a directory mode 0700 with a socket mode 0600;
+a directory owned by another user, or open to group or world, is refused,
+because staged text travels over that socket. The socket name carries the
+LeftBlock version, so an upgrade starts a new server and the old one idles out.
+The server never logs or stores what it is asked about; its log holds start,
+ready, idle exit and error type names. Windows has no Unix sockets there, so
+`resident` is unavailable and the message says to use `per-commit`. The model is
+pinned to one revision and runs on the CPU.
+
+**Costs, measured once** on a Mac with 10 cores and 34 GB (leftblock 0.9.0):
+the weights are 2.6 GB on disk and the process holds about 3.3 GB after
+scanning. Importing torch and transformers took 3.4 s (15.3 s on the first run),
+loading the weights 1.4-1.9 s, and a 2,000-character chunk about 2.3 s on the CPU;
+the Mac's GPU was slower (3.2 s), so LeftBlock stays on the CPU. Over 702 real
+commits the added text had a median of 1,250 characters, a 90th percentile of
+34,000 and a maximum of 500,000. A resident server removes the start-up, but
+scan time still grows with the text a commit adds. These are one machine's
+numbers; yours will differ.
 
 ## Scanning text outside git (`leftblock scan`)
 

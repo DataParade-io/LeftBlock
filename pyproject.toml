@@ -15,7 +15,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Opt-in model-based `leftblock deep-scan` (downloads about 2.8 GB of weights on first use).
+# Opt-in Privacy Filter model for `leftblock deep-scan`, the commit gate and `leftblock deep-server`
+# (about 2.6 GB of weights; `leftblock deep-server download` fetches them).
 deep = [
     "transformers",
     "torch",

@@ -2,8 +2,8 @@
 
 `leftblock deep-scan` reads the added lines of the staged diff (or of a commit
 range) with OpenAI's Privacy Filter, a token-classification model, and reports
-the spans it labels as sensitive. It is slow and heavy compared with the
-gitleaks gate, so it is never part of the commit hook.
+the spans it labels as sensitive. The commit gate can also run it, when a
+person turns that on (see read_settings and server.py).
 
 This module is pure: it knows nothing about command-line output. The detector
 is a callable `detect(text) -> [(start, end, label, score), ...]` so tests can
@@ -17,11 +17,14 @@ import importlib.util
 import os
 import re
 import subprocess
+import sys
 
 from leftblock import allow as allowlist
 from leftblock import bypass
 
 MODEL = "openai/privacy-filter"
+# The weights the commit gate, the resident server and the download use; the evaluation harness does not pin.
+MODEL_REVISION = "7ffa9a043d54d1be65afb281eddf0ffbe629385b"
 RULE_PREFIX = "privacy-filter-"
 INSTALL_HINT = "pip install 'leftblock[deep]'"
 
@@ -43,7 +46,11 @@ class DeepScanError(Exception):
     pass
 
 
-class ExtraMissing(DeepScanError):
+class Unavailable(DeepScanError):
+    """The model cannot be used right now: extra or weights missing, or the server cannot run."""
+
+
+class ExtraMissing(Unavailable):
     pass
 
 
@@ -146,28 +153,101 @@ def parse_threshold(text):
     return value
 
 
+# --- Gate settings ---------------------------------------------------------------
+
+MODES = ("off", "resident", "per-commit")
+UNAVAILABLE_POLICIES = ("block", "warn")
+DEFAULT_IDLE_MINUTES = 60
+SETTINGS_PATTERN = r"^leftblock\.deep\."
+
+
+class GateSettings:
+    def __init__(self, mode="off", on_unavailable="block", idle_minutes=DEFAULT_IDLE_MINUTES,
+                 labels=DEFAULT_LABELS, threshold=DEFAULT_THRESHOLD):
+        self.mode = mode
+        self.on_unavailable = on_unavailable
+        self.idle_minutes = idle_minutes
+        self.labels = labels
+        self.threshold = threshold
+
+
+def read_settings(repo_root, env=None):
+    """The `leftblock.deep.*` Git settings for the repository, validated.
+
+    One `git config` call reads them all, so `--global` gives a machine
+    default, a plain `git config` one repository and `git -c` one commit.
+    Raises ValueError naming the key when a value is invalid; never falls back.
+    """
+    proc = subprocess.run(
+        ["git", "config", "--get-regexp", SETTINGS_PATTERN], cwd=repo_root, env=env,
+        capture_output=True, check=False, stdin=subprocess.DEVNULL,
+    )
+    if proc.returncode not in (0, 1):
+        raise ValueError("Could not read the leftblock.deep.* Git settings.")
+    values = {}
+    for line in proc.stdout.decode("utf-8", "replace").splitlines():
+        key, _, value = line.partition(" ")
+        values[key.rsplit(".", 1)[-1].lower()] = value.strip()
+    settings = GateSettings()
+    if "mode" in values:
+        if values["mode"] not in MODES:
+            raise ValueError("Invalid leftblock.deep.mode: choose from %s." % ", ".join(MODES))
+        settings.mode = values["mode"]
+    if "onunavailable" in values:
+        if values["onunavailable"] not in UNAVAILABLE_POLICIES:
+            raise ValueError(
+                "Invalid leftblock.deep.onUnavailable: choose from %s." % ", ".join(UNAVAILABLE_POLICIES))
+        settings.on_unavailable = values["onunavailable"]
+    if "idleminutes" in values:
+        if not re.fullmatch(r"\d+(\.\d+)?", values["idleminutes"]):
+            raise ValueError("Invalid leftblock.deep.idleMinutes: give a number of minutes (0 never exits).")
+        settings.idle_minutes = float(values["idleminutes"])
+    if "labels" in values:
+        try:
+            settings.labels = parse_labels(values["labels"])
+        except ValueError as exc:
+            raise ValueError("Invalid leftblock.deep.labels: %s" % exc)
+    if "threshold" in values:
+        try:
+            settings.threshold = parse_threshold(values["threshold"])
+        except ValueError:
+            raise ValueError("Invalid leftblock.deep.threshold: give a number between 0 and 1.")
+    return settings
+
+
 # --- Detector -------------------------------------------------------------------
 
 def _normalise(label):
     return re.sub(r"^[BIESL]-", "", str(label)).lower()
 
 
+MODEL_MISSING_MESSAGE = (
+    "The %s model is not downloaded. Run: leftblock deep-server download" % MODEL
+)
+
+
 class PrivacyFilter:
     """The real model, through the transformers token-classification pipeline (CPU)."""
 
-    def __init__(self, notify=None, revision=None):
+    def __init__(self, notify=None, revision=None, local_only=False):
         self.notify = notify or (lambda message: None)
+        # Local only never downloads: a missing model is Unavailable.
+        self.local_only = local_only
         # A Hugging Face commit hash pins the weights (the evaluation harness
         # does); None follows the model's default branch, as before.
         self.revision = revision
         self._pipeline = None
 
     def _load(self):
+        if self.local_only:
+            os.environ["HF_HUB_OFFLINE"] = "1"
         try:
             from huggingface_hub import try_to_load_from_cache
             cached = isinstance(try_to_load_from_cache(MODEL, "config.json", revision=self.revision), str)
         except Exception:
             cached = False
+        if not cached and self.local_only:
+            raise Unavailable(MODEL_MISSING_MESSAGE)
         if not cached:
             self.notify(
                 "Downloading the %s model (about 2.8 GB) to the Hugging Face cache; "
@@ -182,7 +262,11 @@ class PrivacyFilter:
         except ImportError:
             raise ExtraMissing()
         except Exception as exc:
-            raise DeepScanError("Could not load the %s model (%s)." % (MODEL, type(exc).__name__))
+            raise Unavailable("Could not load the %s model (%s)." % (MODEL, type(exc).__name__))
+
+    def load(self):
+        if self._pipeline is None:
+            self._load()
 
     def __call__(self, text):
         if self._pipeline is None:
@@ -196,16 +280,21 @@ class PrivacyFilter:
         return spans
 
 
-def load_detector(notify=None, revision=None):
+def load_detector(notify=None, revision=None, local_only=False):
     """The detector to use: the test stub if DETECTOR_ENV names one, else the real model.
 
     ``revision`` pins the model to one Hugging Face commit (the stub ignores it).
+    ``local_only`` never downloads (the stub ignores it).
     """
     spec = os.environ.get(DETECTOR_ENV)
     if spec:
         module, _, name = spec.partition(":")
+        # The gate runs isolated (python -I), which ignores PYTHONPATH, where the specs keep the stub.
+        sys.path.extend(p for p in os.environ.get("PYTHONPATH", "").split(os.pathsep) if p)
         try:
             return getattr(importlib.import_module(module), name)()
+        except Unavailable:
+            raise
         except ImportError:
             raise ExtraMissing()
         except Exception as exc:
@@ -213,14 +302,14 @@ def load_detector(notify=None, revision=None):
     for package in ("transformers", "torch"):
         if importlib.util.find_spec(package) is None:
             raise ExtraMissing()
-    return PrivacyFilter(notify, revision)
+    return PrivacyFilter(notify, revision, local_only)
 
 
 # --- Reading the diff -------------------------------------------------------------
 
-def _git(repo_root, *args):
+def _git(repo_root, *args, env=None):
     proc = subprocess.run(
-        ["git", "-c", "core.quotePath=false", *args], cwd=repo_root,
+        ["git", "-c", "core.quotePath=false", *args], cwd=repo_root, env=env,
         capture_output=True, check=False, stdin=subprocess.DEVNULL,
     )
     if proc.returncode:
@@ -231,9 +320,12 @@ def _git(repo_root, *args):
 _DIFF_FLAGS = ["-U0", "--no-color", "--no-ext-diff", "--no-renames"]
 
 
-def staged_additions(repo_root):
-    """[(path, line, text_bytes)] for every added line of the staged diff."""
-    diff = _git(repo_root, "diff", "--cached", *_DIFF_FLAGS)
+def staged_additions(repo_root, env=None):
+    """[(path, line, text_bytes)] for every added line of the staged diff.
+
+    ``env`` carries the merge-scoped index when the gate runs during a merge.
+    """
+    diff = _git(repo_root, "diff", "--cached", *_DIFF_FLAGS, env=env)
     return list(bypass._added_lines(diff))
 
 

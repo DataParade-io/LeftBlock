@@ -9,6 +9,7 @@ Scenarios tagged ``@gitleaks`` are skipped when no gitleaks binary is on PATH.
 
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -50,7 +51,19 @@ def before_scenario(context, scenario):
     context.synthetic_values = []
 
 
+def stop_privacy_filter_server(context):
+    """Stop any resident Privacy Filter server the scenario started, so none outlives it."""
+    if "XDG_RUNTIME_DIR" not in getattr(context, "env", {}):
+        return
+    subprocess.run(
+        [sys.executable, "-m", "leftblock.cli", "deep-server", "stop"],
+        env=context.env, cwd=context.root, capture_output=True, timeout=60,
+    )
+
+
 def after_scenario(context, scenario):
+    if getattr(context, "root", None):
+        stop_privacy_filter_server(context)
     root = getattr(context, "root", None)
     if root and os.path.exists(root):
         shutil.rmtree(root, ignore_errors=True)

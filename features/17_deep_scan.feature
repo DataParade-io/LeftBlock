@@ -6,8 +6,8 @@ Feature: Deep scan
   "leftblock deep-scan" reads the added lines of the staged diff (or, with
   --range A..B, of the commits in that range, for CI) with OpenAI's Privacy
   Filter, a token-classification model. It is optional (the leftblock[deep]
-  extra), slow and heavy, so the commit hook never runs it: the hook stays on
-  gitleaks. By default it reports secrets, emails, phone numbers and addresses
+  extra), slow and heavy, so the commit hook does not run it unless a person
+  turns that on (chapter 21): by default the hook stays on gitleaks. By default it reports secrets, emails, phone numbers and addresses
   the model is at least 0.9 sure of; names, account numbers, dates and links
   are off until asked for. A set of exclusions removes the noise a model
   makes (board data, generated files, identifier shapes, placeholder lines,
@@ -474,7 +474,7 @@ Feature: Deep scan
     And stderr contains "Not inside a Git repository"
 
   @gitleaks
-  Scenario: The commit hook never runs the deep scan
+  Scenario: The commit hook does not run the deep scan by default
     Given a repository with LeftBlock installed as a local check-only gate
     And the deep scan model is replaced by a stub detector
     And a staged file "contacts.cfg" containing a phone number that the model flags as private_phone at 0.99
@@ -482,7 +482,7 @@ Feature: Deep scan
     Then the commit succeeds
     And the model was never consulted
 
-  Scenario: The dry run of a commit does not run the deep scan either
+  Scenario: The dry run of a commit does not run the deep scan by default either
     Given a repository without LeftBlock
     And the deep scan model is replaced by a stub detector
     And a staged file "settings.cfg" containing a credential-shaped value that the model flags as secret at 0.99

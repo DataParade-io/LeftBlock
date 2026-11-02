@@ -6,7 +6,8 @@ steps registered in the JSON file named by LEFTBLOCK_STUB_SPANS, each with a
 label and a score, wherever they occur in the text it is given. It appends a
 line to LEFTBLOCK_STUB_LOG on every call, so a scenario can tell whether the
 model was consulted at all. LEFTBLOCK_STUB_MISSING_EXTRA makes the factory
-fail as a missing optional extra would. LEFTBLOCK_STUB_FAIL_AFTER=N makes the
+fail as a missing optional extra would, LEFTBLOCK_STUB_MODEL_MISSING as
+model weights that were never downloaded would. LEFTBLOCK_STUB_FAIL_AFTER=N makes the
 (N+1)th call raise, as an interrupted deep scan would.
 """
 
@@ -17,6 +18,9 @@ import os
 def factory():
     if os.environ.get("LEFTBLOCK_STUB_MISSING_EXTRA"):
         raise ImportError("transformers")
+    if os.environ.get("LEFTBLOCK_STUB_MODEL_MISSING"):
+        from leftblock import deep
+        raise deep.Unavailable(deep.MODEL_MISSING_MESSAGE)
     return detect
 
 

@@ -56,7 +56,7 @@ authors are in [steps/README.md](steps/README.md).
 16. **The command line** (`16_the_command_line`). Subcommands, `--help`,
     `--version` and argument errors: the surface a person types.
 17. **Deep scan** (`17_deep_scan`). The optional, model-based
-    `leftblock deep-scan` (never run by the hook): default labels and
+    `leftblock deep-scan` (not in the hook unless chapter 21 turns it on): default labels and
     threshold, enabling off labels, the exclusions, recorded overrides,
     `--range` for CI, exit codes, and never printing the matched value. The
     specs swap the model for a stub detector.
@@ -93,3 +93,11 @@ authors are in [steps/README.md](steps/README.md).
     trees, other commits and missing policy are refused with status 2;
     `--no-status` and `--dry-run` post nothing. `gh` is a recording stand-in
     in the specs.
+21. **The model in the commit gate** (`21_model_scan_in_the_commit_gate`).
+    `leftblock.deep.mode` (`off`, `resident`, `per-commit`) and its siblings,
+    read from Git config per machine, repository or commit: off by default
+    with no deep work, blocking and passing in `check` and in receipt mode,
+    overrides, unavailable models (block or warn), invalid settings, the
+    resident server's reuse, single start, idle exit, private socket and
+    log, and merge scope. The specs run the stub detector inside the real
+    server process and socket.

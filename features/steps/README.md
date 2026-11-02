@@ -179,6 +179,25 @@ Used as `a synthetic <kind>`. The content shown is what ends up in the file.
 - Wallets: `Ethereum private key`, `Bitcoin WIF key`, `seed phrase`.
 - Must not be flagged: `harmless code`, `public wallet address and digest`.
 
+## Model gate steps (`ch21_model_gate_steps.py`, chapter 21)
+
+Scenarios give the server a private `XDG_RUNTIME_DIR` under their temporary
+root; `environment.py` stops any server a scenario started.
+
+- `the Privacy Filter server uses a private runtime directory`
+- `the repository sets "{key}" to "{value}"` / `the global Git config sets "{key}" to "{value}"`
+- `the model weights are not downloaded`, `the server directory is open to other users`
+- `the model is told to flag the synthetic values so far as {label} at {score}`
+- `I commit the staged files with "{key}" set to "{value}" for that commit`
+- `I stage another harmless file "{name}"`, `I note the server process id`
+- `{n} copies of the repository check their staged changes at the same time`
+- `within {n} seconds no Privacy Filter server is running`
+- `no Privacy Filter server is running`, `the server process id is unchanged`,
+  `every check exits with {code}`, `exactly one Privacy Filter server was started`
+- `the server directory / socket is accessible only by its owner`,
+  `the server socket is gone`, `the server log records that ...`,
+  `the server log contains no staged text`, `the commit includes the allow file`
+
 ## Rules for chapter authors
 
 1. Put new steps in `features/steps/chNN_<slug>_steps.py`. Do not edit
