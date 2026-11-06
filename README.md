@@ -486,6 +486,31 @@ same offsets into each file plus the `line`.
   not skip lines mentioning `placeholder` or `example`: the text is yours to
   judge.
 
+For integrations, use `leftblock scan --format report PATH...` or
+`leftblock scan --jsonl --format report`. Both return one JSON document with
+`schemaVersion: 1`, `rules`, `privacyFilter`, and `findings`. Locations use
+`file` for paths or `id` for records, with a 1-based `line` in both modes.
+The other finding fields and UTF-8 byte offsets are the same as above.
+
+The rules status is `completed` (with `findingCount`) or `error` (with a
+diagnostic). Privacy Filter runs in a separate process with a 180-second time
+limit and uses only local model files. If it cannot run, the report sets its
+status to `unavailable` with a reason, stderr shows a warning, and the rules'
+findings are retained. The other model statuses are `completed`, `disabled`
+(`--privacy-filter off`), and `not-run` (no input or rules failed).
+Exit codes remain 0 for no findings, 1 for findings, and 2 for rule or input
+errors. An unavailable model alone does not change the exit code.
+
+To enable the model, install `leftblock[deep]` in the scanner's Python
+environment and cache the files explicitly from that environment:
+
+```bash
+python -c 'from huggingface_hub import snapshot_download; snapshot_download("openai/privacy-filter", allow_patterns=["*.json", "*.safetensors", "*.txt"])'
+```
+
+If you cached a particular model commit instead of the default revision,
+set `LEFTBLOCK_PRIVACY_FILTER_REVISION` to that commit before you scan.
+
 ## Receipts for a local CI run (`leftblock ci`)
 
 For repositories that run CI on a laptop instead of in paid build minutes,
