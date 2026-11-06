@@ -19,6 +19,7 @@ from leftblock import bypass
 from leftblock import ci
 from leftblock import deep
 from leftblock import scan
+from leftblock import scan_report
 from leftblock import validators
 from leftblock.core import (
     get_secret, compute_hmac, get_tree_hash, get_commit_tree_hash,
@@ -735,8 +736,12 @@ def cmd_scan(args):
         _scan_error("--jsonl reads records from standard input; do not also give paths.")
     if not args.jsonl and not args.paths:
         _scan_error("Give PATH... to scan, or --jsonl to read records from standard input.")
-    if args.jsonl and args.format:
+    if args.jsonl and args.format not in (None, "report"):
         _scan_error("--format applies to paths; --jsonl always prints one JSON finding per line.")
+    if args.privacy_filter is not None and args.format != "report":
+        _scan_error("--privacy-filter applies to --format report.")
+    if args.format == "report" and args.deep:
+        _scan_error("Use --privacy-filter with --format report instead of --deep.")
     if not args.deep and (args.labels or args.threshold is not None):
         _scan_error("--labels and --threshold apply to --deep.")
     try:
@@ -757,6 +762,17 @@ def cmd_scan(args):
     except ValueError:  # not the main thread
         pass
     try:
+        if args.format == "report":
+            records = scan.read_records(sys.stdin.buffer) if args.jsonl else None
+            report = scan_report.run(args.paths, records, args.privacy_filter or "auto", KANBUS_DATA)
+            print(json.dumps(report), flush=True)
+            if report["rules"]["status"] == "error":
+                print_err(report["rules"]["message"])
+                sys.exit(EXIT_ERROR)
+            if report["privacyFilter"]["status"] == "unavailable":
+                print_warn("Privacy Filter unavailable; LeftBlock rules completed (%d findings). %s" %
+                           (report["rules"]["findingCount"], report["privacyFilter"]["message"]))
+            sys.exit(EXIT_BLOCKED if report["findings"] else EXIT_PASSED)
         if args.jsonl:
             findings = scan.scan_records(scan.read_records(sys.stdin.buffer), *options)
         else:
@@ -1118,7 +1134,10 @@ def main():
         help='Read records {"id": "...", "text": "..."} one per line from standard input; print one JSON '
              'finding per line with UTF-8 byte offsets into the record text',
     )
-    scan_p.add_argument("--format", choices=["text", "json"], help="Output for paths (default text)")
+    scan_p.add_argument("--format", choices=["text", "json", "report"],
+                        help="Output for paths (default text), or report for either input mode")
+    scan_p.add_argument("--privacy-filter", choices=["auto", "off"],
+                        help="With report output, try the local model by default or skip it")
     scan_p.add_argument("--deep", action="store_true", help="Also run the Privacy Filter model (needs leftblock[deep])")
     scan_p.add_argument("--labels", default="", help="With --deep, also report these comma-separated labels (off by default: "
                         + ", ".join(deep.OPTIONAL_LABELS) + ")")

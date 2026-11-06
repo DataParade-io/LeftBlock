@@ -255,7 +255,7 @@ def _order(finding):
     return (finding["start"], finding["end"], finding["rule"])
 
 
-def scan_records(records, detector_factory=None, labels=None, threshold=None):
+def scan_records(records, detector_factory=None, labels=None, threshold=None, *, rules=True):
     """Findings for [(id, text)], each with the record id as "file", in record order.
 
     One gitleaks run covers every record. `detector_factory`, when given, loads
@@ -264,13 +264,15 @@ def scan_records(records, detector_factory=None, labels=None, threshold=None):
     if not records:
         return []
     detector = detector_factory() if detector_factory else None
-    with private_tempdir() as workdir:
-        folder = os.path.join(workdir, "records")
-        os.mkdir(folder)
-        for number, (_, text) in enumerate(records):
-            with open(os.path.join(folder, "%d.txt" % number), "wb") as handle:
-                handle.write(encode(text))
-        items = run_gitleaks(folder, workdir)
+    items = []
+    if rules:
+        with private_tempdir() as workdir:
+            folder = os.path.join(workdir, "records")
+            os.mkdir(folder)
+            for number, (_, text) in enumerate(records):
+                with open(os.path.join(folder, "%d.txt" % number), "wb") as handle:
+                    handle.write(encode(text))
+            items = run_gitleaks(folder, workdir)
 
     def resolve(file):
         match = RECORD_FILE.fullmatch(os.path.basename(file))
@@ -310,13 +312,14 @@ def walk(paths):
     return files
 
 
-def scan_paths(paths, detector_factory=None, labels=None, threshold=None, kanbus_data=None):
+def scan_paths(paths, detector_factory=None, labels=None, threshold=None, kanbus_data=None, *, rules=True):
     """Findings for files and directories, with `file` the path and `line` the line."""
     files = walk(paths)
-    with private_tempdir() as workdir:
-        items = []
-        for number, path in enumerate(paths):
-            items.extend(run_gitleaks(path, workdir, number))
+    items = []
+    if rules:
+        with private_tempdir() as workdir:
+            for number, path in enumerate(paths):
+                items.extend(run_gitleaks(path, workdir, number))
     cache = {}
 
     def data_for(file):
