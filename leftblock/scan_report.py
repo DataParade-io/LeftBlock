@@ -74,7 +74,10 @@ def run(paths, records, model_mode, kanbus_data):
 def _worker():
     """Read private inputs from stdin, and return only model findings."""
     request = json.load(sys.stdin)
-    options = (deep.load_detector, deep.DEFAULT_LABELS, deep.DEFAULT_THRESHOLD)
+    def detector_factory():
+        return deep.load_detector(revision=os.environ.get("LEFTBLOCK_PRIVACY_FILTER_REVISION"))
+
+    options = (detector_factory, deep.DEFAULT_LABELS, deep.DEFAULT_THRESHOLD)
     if request["records"] is None:
         findings = scan.scan_paths(request["paths"], *options, rules=False,
                                    kanbus_data=re.compile(request["kanbusPattern"]))

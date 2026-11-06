@@ -508,6 +508,9 @@ environment and cache the files explicitly from that environment:
 python -c 'from huggingface_hub import snapshot_download; snapshot_download("openai/privacy-filter", allow_patterns=["*.json", "*.safetensors", "*.txt"])'
 ```
 
+If you cached a particular model commit instead of the default revision,
+set `LEFTBLOCK_PRIVACY_FILTER_REVISION` to that commit before you scan.
+
 ## Receipts for a local CI run (`leftblock ci`)
 
 For repositories that run CI on a laptop instead of in paid build minutes,
